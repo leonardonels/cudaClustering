@@ -27,14 +27,14 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 500
-    probability: 0.95
+    maxIterations: 200
+    probability: 0.99
     optimizeCoefficients: false
 
     #options
     filterOnZ: false
     segment: true
-    publishFilteredPc: true
+    publishFilteredPc: false
     publishSegmentedPc: true 
     
     
