@@ -56,7 +56,7 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
     memoryAllocated = inputSize;
   }
 
-  cudaMemcpyAsync(outputEC, input, sizeof(float) * 4 * inputSize, cudaMemcpyHostToDevice, stream);
+  // cudaMemcpyAsync(outputEC, input, sizeof(float) * 4 * inputSize, cudaMemcpyHostToDevice, stream);
   
   cudaMemsetAsync(indexEC, 0, sizeof(unsigned int) * 4 * (inputSize), stream);
   cudaStreamSynchronize(stream);

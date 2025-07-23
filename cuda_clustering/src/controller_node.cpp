@@ -1,5 +1,4 @@
 #include "cuda_clustering/controller_node.hpp"
-#include "rosPointCloud2ToPCL.hpp"
 
 ControllerNode::ControllerNode() : Node("clustering_node")
 {
@@ -132,19 +131,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     unsigned int size = 0;
     float* tmp = NULL;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    // Convert from sensor_msgs::PointCloud2 to pcl::PointCloud
-    auto t1 = std::chrono::steady_clock::now();
-
-    //pcl::fromROSMsg(*sub_cloud, *pcl_cloud);
-    // pcl::moveFromROSMsg(*sub_cloud, *pcl_cloud);
-    pcl_df::fromROSMsg(*sub_cloud, *pcl_cloud);
-
-    auto t2 = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
-
-    unsigned int inputSize = pcl_cloud->points.size();
+    unsigned int inputSize = sub_cloud->width * sub_cloud->height;
     
     if(memoryAllocated < inputSize){
         cudaFree(inputData);
@@ -156,8 +143,27 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         memoryAllocated = inputSize;
     }
 
-    cudaMemcpyAsync(inputData, pcl_cloud->points.data(), sizeof(float) * 4 * inputSize, cudaMemcpyHostToDevice, stream);
-    cudaStreamSynchronize(stream);
+    /* ----------------------------------------- */
+    auto t1 = std::chrono::steady_clock::now();
+    std::uint8_t* cloud_data = reinterpret_cast<std::uint8_t *>(&inputData[0]);
+
+    for (std::uint32_t r = 0; r < sub_cloud->height; ++r)
+    {
+        const std::uint8_t *row_data = sub_cloud->data.data() + r * sub_cloud->row_step;
+        for (std::uint32_t c = 0; c < sub_cloud->width; ++c)
+        {
+            const std::uint8_t *pt_data = row_data + c * sub_cloud->point_step;
+            memcpy(cloud_data,
+                        pt_data,
+                        3 * sizeof(float));
+            cloud_data += sizeof(pcl::PointXYZ);
+        }
+    }
+    /* ----------------------------------------- */
+
+    auto t2 = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
 
     if (this->filterOnZ)
     {
