@@ -1,0 +1,8 @@
+.vscode/settings.json
+build/
+cuda_clustering/include/cuda_clustering/clustering/cuda_clustering.hpp
+cuda_clustering/lib/libcudacluster.so
+cuda_clustering/lib/libcudafilter.so
+cuda_clustering/lib/libcudasegmentation.so
+install/
+log/

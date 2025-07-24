@@ -5,6 +5,12 @@
 
 CudaSegmentation::CudaSegmentation(segParam_t &params)
 {
+  // Seleziona la GPU 0
+  int ngpu = 0;
+  cudaGetDeviceCount(&ngpu);
+  if (ngpu == 0) throw std::runtime_error("Nessuna GPU trovata"); //controllo possibile errore GPU
+  cudaSetDevice(0);
+
   segP.distanceThreshold = params.distanceThreshold;
   segP.maxIterations = params.maxIterations;
   segP.probability = params.probability;
@@ -81,9 +87,11 @@ void CudaSegmentation::segment(
         reinterpret_cast<float4 *>(*out_points));
     auto idx_ptr = thrust::device_pointer_cast(index);
 
+    auto exec = thrust::cuda::par.on(stream); // Esecuzione su stream specifico
+
     // copia input4[i] in output4 se idx_ptr[i] == -1
     auto new_end = thrust::copy_if(
-        thrust::device,          // esecuzione su GPU
+        exec,          // esecuzione su GPU
         input4,                  // inizio input
         input4 + nCount,         // fine input
         idx_ptr,                 // indice di input

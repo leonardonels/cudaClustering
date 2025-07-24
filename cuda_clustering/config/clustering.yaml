@@ -34,7 +34,7 @@
     #options
     filterOnZ: false
     segment: true
-    publishFilteredPc: true
+    publishFilteredPc: false
     publishSegmentedPc: true 
     
     
