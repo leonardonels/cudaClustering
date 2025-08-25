@@ -7,6 +7,7 @@
 #include "cuda_clustering/filtering/ifiltering.hpp"
 #include "cuda_clustering/segmentation/cuda_segmentation.hpp"
 #include "cuda_clustering/segmentation/isegmentation.hpp"
+#include "cuda_clustering/utils/pointcloud_converter.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>

@@ -143,22 +143,11 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         memoryAllocated = inputSize;
     }
 
-    /* ----------------------------------------- */
     auto t1 = std::chrono::steady_clock::now();
-    std::uint8_t* cloud_data = reinterpret_cast<std::uint8_t *>(&inputData[0]);
-
-    for (std::uint32_t r = 0; r < sub_cloud->height; ++r)
-    {
-        const std::uint8_t *row_data = sub_cloud->data.data() + r * sub_cloud->row_step;
-        for (std::uint32_t c = 0; c < sub_cloud->width; ++c)
-        {
-            const std::uint8_t *pt_data = row_data + c * sub_cloud->point_step;
-            memcpy(cloud_data,
-                        pt_data,
-                        3 * sizeof(float));
-            cloud_data += sizeof(pcl::PointXYZ);
-        }
-    }
+    /* ----------------------------------------- */
+    
+    pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);
+    
     /* ----------------------------------------- */
 
     auto t2 = std::chrono::steady_clock::now();
