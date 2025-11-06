@@ -46,6 +46,14 @@ add_executable(clustering_node
   src/filtering/cuda_filtering.cpp
   src/segmentation/cuda_segmentation.cpp
 )
+target_link_libraries(clustering_node
+  ${PCL_LIBRARIES}
+  ${CUDA_LIBRARIES}
+  cuda_clustering
+  cuda_filtering
+  cuda_segmentation
+  pointcloud_converter
+)
 target_include_directories(clustering_node PUBLIC include)
 
 add_library(libcudacluster SHARED IMPORTED)
@@ -65,6 +73,16 @@ add_library(cuda_clustering src/clustering/cuda_clustering.cpp)
 add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.cpp)
 add_library(cuda_filtering src/filtering/cuda_filtering.cpp)
 add_library(cuda_segmentation src/segmentation/cuda_segmentation.cpp)
+
+# Optimized pointcloud converter library with -O3
+add_library(pointcloud_converter src/utils/pointcloud_converter.cpp)
+target_compile_options(pointcloud_converter PRIVATE -O3 -march=native -mtune=native -ffast-math)
+target_include_directories(pointcloud_converter PUBLIC include)
+ament_target_dependencies(pointcloud_converter
+  sensor_msgs
+  pcl_conversions
+  PCL
+)
 
 ament_target_dependencies(cluster_filtering
   geometry_msgs
@@ -97,6 +115,7 @@ target_link_libraries(${PROJECT_NAME}
   cuda_clustering
   cuda_filtering
   cuda_segmentation
+  pointcloud_converter
 )
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp

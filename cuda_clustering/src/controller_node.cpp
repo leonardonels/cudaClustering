@@ -1,5 +1,4 @@
 #include "cuda_clustering/controller_node.hpp"
-#include "rosPointCloud2ToPCL.hpp"
 
 ControllerNode::ControllerNode() : Node("clustering_node")
 {
@@ -132,19 +131,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     unsigned int size = 0;
     float* tmp = NULL;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    // Convert from sensor_msgs::PointCloud2 to pcl::PointCloud
-    auto t1 = std::chrono::steady_clock::now();
-
-    //pcl::fromROSMsg(*sub_cloud, *pcl_cloud);
-    // pcl::moveFromROSMsg(*sub_cloud, *pcl_cloud);
-    pcl_df::fromROSMsg(*sub_cloud, *pcl_cloud);
-
-    auto t2 = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
-
-    unsigned int inputSize = pcl_cloud->points.size();
+    unsigned int inputSize = sub_cloud->width * sub_cloud->height;
     
     if(memoryAllocated < inputSize){
         cudaFree(inputData);
@@ -156,8 +143,16 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         memoryAllocated = inputSize;
     }
 
-    cudaMemcpyAsync(inputData, pcl_cloud->points.data(), sizeof(float) * 4 * inputSize, cudaMemcpyHostToDevice, stream);
-    cudaStreamSynchronize(stream);
+    auto t1 = std::chrono::steady_clock::now();
+    /* ----------------------------------------- */
+    
+    pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);
+    
+    /* ----------------------------------------- */
+
+    auto t2 = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
 
     if (this->filterOnZ)
     {
