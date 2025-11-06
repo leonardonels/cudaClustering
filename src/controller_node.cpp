@@ -215,8 +215,10 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         std::cout << "\n------------------------------------ "<< std::endl;
         return;
     }
+
     this->failed_segmentations--;
-    if(this->autoOptimizeCoefficients && this->failed_segmentations < - this->maxFailedSegmentations){
+    
+    if(this->autoOptimizeCoefficients && this->failed_segmentations < - this->maxFailedSegmentations && !this->segP.optimizeCoefficients){
         this->failed_segmentations = 0;
         this->segP.optimizeCoefficients = true;
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
