@@ -24,6 +24,10 @@ private:
         float downFilterLimits, upFilterLimits;
         clustering_parameters param;
         segParam_t segP;
+        bool autoOptimizeCoefficients;
+        int failed_segmentations;
+        int maxFailedSegmentations;
+        bool skipClustering;
 
         cudaStream_t stream = NULL;
         unsigned int memoryAllocated = 0;

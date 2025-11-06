@@ -6,11 +6,11 @@
 
     #clustering
     minClusterSize : 1        # Minimum cluster size to filter out noise
-    maxClusterSize : 500        # Maximum size for large objects
-    voxelX: 0.8               #// Down-sampling resolution in X (meters)
-    voxelY: 0.8                  #// Down-sampling resolution in Y (meters)
-    voxelZ: 1.0                #// Down-sampling resolution in Z (meters)
-    countThreshold: 10          #  // Minimum points per voxel
+    maxClusterSize : 500      # Maximum size for large objects
+    voxelX: 0.8               # Down-sampling resolution in X (meters)
+    voxelY: 0.8               # Down-sampling resolution in Y (meters)
+    voxelZ: 1.0               # Down-sampling resolution in Z (meters)
+    countThreshold: 3         # Minimum points per voxel
 
     #filter for clusters
     clusterMaxX: 0.4
@@ -27,15 +27,18 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 500
+    maxIterations: 166
     probability: 0.95
     optimizeCoefficients: false
+    autoOptimizeCoefficients: true
+    maxFailedSegmentations: 10
 
     #options
     filterOnZ: false
     segment: true
     publishFilteredPc: true
     publishSegmentedPc: true 
+    skipClustering: false
     
     
 

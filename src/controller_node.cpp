@@ -6,6 +6,7 @@ ControllerNode::ControllerNode() : Node("clustering_node")
 
 
     this->segmentation = new CudaSegmentation(segP);
+    this->failed_segmentations = 0;
     this->filter = new CudaFilter(upFilterLimits, downFilterLimits);
 
     this->clustering = new CudaClustering(param);
@@ -72,10 +73,13 @@ void ControllerNode::loadParameters()
     declare_parameter("segment", false);
     declare_parameter("publishFilteredPc", false);
     declare_parameter("publishSegmentedPc", false);
-    declare_parameter("distanceThreshold", 0.05);
-    declare_parameter("maxIterations", 50);
-    declare_parameter("probability", 0.99);
-    declare_parameter("optimizeCoefficients", true);
+    declare_parameter("distanceThreshold", 0.15);
+    declare_parameter("maxIterations", 166);
+    declare_parameter("probability", 0.95);
+    declare_parameter("optimizeCoefficients", false);
+    declare_parameter("autoOptimizeCoefficients", false);
+    declare_parameter("maxFailedSegmentations", 10);
+    declare_parameter("skipClustering", false);
 
 
     get_parameter("input_topic", this->input_topic);
@@ -106,6 +110,9 @@ void ControllerNode::loadParameters()
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
     get_parameter("optimizeCoefficients", this->segP.optimizeCoefficients);
+    get_parameter("autoOptimizeCoefficients", this->autoOptimizeCoefficients);
+    get_parameter("maxFailedSegmentations", this->failed_segmentations);
+    get_parameter("skipClustering", this->skipClustering);
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -184,6 +191,27 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         tmp = partialOutput;
         partialOutput = inputData;
         inputData = tmp;
+    }
+
+    if (inputSize == 0 || this->skipClustering)
+    {
+        this->failed_segmentations++;
+        if(this->autoOptimizeCoefficients && this->failed_segmentations >= this->maxFailedSegmentations){
+            this->failed_segmentations = 0;
+            this->segP.optimizeCoefficients = false;
+        }
+
+        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
+        RCLCPP_WARN(rclcpp::get_logger("clustering_node"), "No points to cluster.");
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
+        std::cout << "\n------------------------------------ "<< std::endl;
+        return;
+    }
+    this->failed_segmentations--;
+    if(this->autoOptimizeCoefficients && this->failed_segmentations < - this->maxFailedSegmentations){
+        this->failed_segmentations = 0;
+        this->segP.optimizeCoefficients = true;
     }
 
     this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
