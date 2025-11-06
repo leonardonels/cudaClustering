@@ -16,11 +16,11 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     /* Define QoS for Best Effort messages transport */
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10), rmw_qos_profile_sensor_data);
 
-    this->cones_array_pub = this->create_publisher<visualization_msgs::msg::Marker>("/perception/newclusters", 100);
+    this->cones_array_pub = this->create_publisher<visualization_msgs::msg::Marker>(this->cluster_topic, 100);
     if(this->filterOnZ && this->publishFilteredPc)
-        this->filtered_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/filtered_pc", 100);
+        this->filtered_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->filtered_topic, 100);
     if(this->segmentFlag && this->publishSegmentedPc)
-        this->segmented_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/segmented_pc", 100);
+        this->segmented_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->segmented_topic, 100);
 
     /* Create subscriber */
     this->cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(this->input_topic, qos,
@@ -49,8 +49,11 @@ ControllerNode::ControllerNode() : Node("clustering_node")
 void ControllerNode::loadParameters()
 {
 
-    declare_parameter("input_topic", "");
-    declare_parameter("frame_id", "");
+    declare_parameter("input_topic", "/lidar_points");
+    declare_parameter("segmented_topic", "/segmented_points");
+    declare_parameter("filtered_topic", "/filtered_points");
+    declare_parameter("cluster_topic", "/clusters");
+    declare_parameter("frame_id", "map");
     declare_parameter("minClusterSize", 0);
     declare_parameter("maxClusterSize", 0);
     declare_parameter("voxelX", 0.0);
@@ -83,6 +86,9 @@ void ControllerNode::loadParameters()
 
 
     get_parameter("input_topic", this->input_topic);
+    get_parameter("segmented_topic", this->segmented_topic);
+    get_parameter("filtered_topic", this->filtered_topic);
+    get_parameter("cluster_topic", this->cluster_topic);
     get_parameter("frame_id", this->frame_id);
     get_parameter("minClusterSize", this->param.clustering.minClusterSize);
     get_parameter("maxClusterSize", this->param.clustering.maxClusterSize);
