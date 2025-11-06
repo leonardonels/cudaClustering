@@ -10,7 +10,7 @@ def generate_launch_description():
     config_node = os.path.join(
         get_package_share_directory('clustering'),
         'config',
-        'clustering.yaml'
+        'config.yaml'
         )
 
     node=Node(

@@ -199,6 +199,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         if(this->autoOptimizeCoefficients && this->failed_segmentations >= this->maxFailedSegmentations){
             this->failed_segmentations = 0;
             this->segP.optimizeCoefficients = false;
+            RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: disabling coefficients optimization.");
         }
 
         std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
@@ -212,6 +213,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     if(this->autoOptimizeCoefficients && this->failed_segmentations < - this->maxFailedSegmentations){
         this->failed_segmentations = 0;
         this->segP.optimizeCoefficients = true;
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
     }
 
     this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
