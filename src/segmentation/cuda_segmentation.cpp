@@ -76,7 +76,7 @@ void CudaSegmentation::segment(
     // inliers.reserve(nCount);
     for (int i = 0; i < nCount; ++i)
     {
-      if (index[i] == -1){
+      if (index[i] != 1){
         // inliers.push_back(i);
         (*out_points)[4 * idx + 0] = inputData[4 * i + 0]; // x
         (*out_points)[4 * idx + 1] = inputData[4 * i + 1]; // y
