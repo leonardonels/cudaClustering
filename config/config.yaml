@@ -35,6 +35,7 @@
     optimizeCoefficients: false
     autoOptimizeCoefficients: false
     maxFailedSegmentations: 10
+    minSuccessfulSegmentations: 60
 
     #options
     filterOnZ: false

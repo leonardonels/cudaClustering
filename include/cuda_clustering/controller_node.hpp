@@ -25,8 +25,10 @@ private:
         clustering_parameters param;
         segParam_t segP;
         bool autoOptimizeCoefficients;
-        int failed_segmentations;
+        int failedSegmentations;
+        int successfulSegmentations;
         int maxFailedSegmentations;
+        int minSuccessfulSegmentations;
         bool skipClustering;
 
         cudaStream_t stream = NULL;

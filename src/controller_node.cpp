@@ -6,7 +6,8 @@ ControllerNode::ControllerNode() : Node("clustering_node")
 
 
     this->segmentation = new CudaSegmentation(segP);
-    this->failed_segmentations = 0;
+    this->failedSegmentations = 0;
+    this->successfulSegmentations = 0;
     this->filter = new CudaFilter(upFilterLimits, downFilterLimits);
 
     this->clustering = new CudaClustering(param);
@@ -82,6 +83,7 @@ void ControllerNode::loadParameters()
     declare_parameter("optimizeCoefficients", false);
     declare_parameter("autoOptimizeCoefficients", false);
     declare_parameter("maxFailedSegmentations", 10);
+    declare_parameter("minSuccessfulSegmentations", 60);
     declare_parameter("skipClustering", false);
 
 
@@ -117,7 +119,8 @@ void ControllerNode::loadParameters()
     get_parameter("probability", this->segP.probability);
     get_parameter("optimizeCoefficients", this->segP.optimizeCoefficients);
     get_parameter("autoOptimizeCoefficients", this->autoOptimizeCoefficients);
-    get_parameter("maxFailedSegmentations", this->failed_segmentations);
+    get_parameter("maxFailedSegmentations", this->maxFailedSegmentations);
+    get_parameter("minSuccessfulSegmentations", this->minSuccessfulSegmentations);
     get_parameter("skipClustering", this->skipClustering);
 }
 
@@ -201,9 +204,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
     if (inputSize == 0 || this->skipClustering)
     {
-        this->failed_segmentations++;
-        if(this->autoOptimizeCoefficients && this->failed_segmentations >= this->maxFailedSegmentations){
-            this->failed_segmentations = 0;
+        this->failedSegmentations++;
+        if(this->autoOptimizeCoefficients && this->failedSegmentations >= this->maxFailedSegmentations){
+            this->failedSegmentations = 0;
             this->segP.optimizeCoefficients = false;
             RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: disabling coefficients optimization.");
         }
@@ -216,10 +219,10 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         return;
     }
 
-    this->failed_segmentations--;
-    
-    if(this->autoOptimizeCoefficients && this->failed_segmentations < - this->maxFailedSegmentations && !this->segP.optimizeCoefficients){
-        this->failed_segmentations = 0;
+    this->successfulSegmentations++;
+
+    if(this->autoOptimizeCoefficients && !this->segP.optimizeCoefficients && this->successfulSegmentations >= this->minSuccessfulSegmentations){
+        this->successfulSegmentations = 0;
         this->segP.optimizeCoefficients = true;
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
     }
