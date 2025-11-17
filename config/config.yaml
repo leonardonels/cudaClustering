@@ -4,7 +4,7 @@
     input_topic: /lidar_points #/lidar_points #/patchworkpp/nonground
     segmented_topic: /segmented_points
     filtered_topic: /filtered_points
-    cluster_topic: /perception/newclusters #/perception/newclusters
+    cluster_topic: /clusters #/perception/newclusters
     frame_id: "hesai_lidar"
 
     #clustering
@@ -39,9 +39,9 @@
 
     #options
     filterOnZ: false
-    segment: false
+    segment: true
     publishFilteredPc: false
-    publishSegmentedPc: true 
+    publishSegmentedPc: true
     skipClustering: false
     
     

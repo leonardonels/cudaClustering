@@ -37,12 +37,9 @@ void CudaClustering::getInfo(void)
 }
 
 void CudaClustering::reallocateMemory(unsigned int sizeEC){
-  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "REALLOC");
-  cudaFree(indexEC);
+  if(indexEC != nullptr) cudaFree(indexEC);
   cudaStreamSynchronize(stream);
-  cudaMallocManaged(&indexEC, sizeof(unsigned int) * 4 * (sizeEC), cudaMemAttachHost);
-  cudaStreamSynchronize(stream);
-  cudaStreamAttachMemAsync (stream, indexEC);
+  cudaMallocManaged(&indexEC, sizeof(unsigned int) * 4 * (sizeEC));
   cudaStreamSynchronize(stream);
 }
 
@@ -56,10 +53,7 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
     memoryAllocated = inputSize;
   }
 
-  // cudaMemcpyAsync(outputEC, input, sizeof(float) * 4 * inputSize, cudaMemcpyHostToDevice, stream);
-  
-  cudaMemsetAsync(indexEC, 0, sizeof(unsigned int) * 4 * (inputSize), stream);
-  cudaStreamSynchronize(stream);
+  cudaMemset(indexEC, 0, sizeof(unsigned int) * 4 * (inputSize));
   
   cudaExtractCluster cudaec(stream);
   cudaec.set(this->ecp);
@@ -71,6 +65,8 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
 
   cudaec.extract(input, inputSize, outputEC, indexEC);
   cudaStreamSynchronize(stream);
+  
+  // All memory is managed, can access directly after sync
 
   for (size_t i = 1; i <= indexEC[0]; i++)
   {

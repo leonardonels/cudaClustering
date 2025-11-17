@@ -150,20 +150,18 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     unsigned int inputSize = sub_cloud->width * sub_cloud->height;
     
     if(memoryAllocated < inputSize){
-        cudaFree(inputData);
-        cudaMallocManaged(&inputData, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
-        cudaStreamAttachMemAsync (stream, inputData);
-        cudaFree(partialOutput);
-        cudaMallocManaged(&partialOutput, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
-        cudaStreamAttachMemAsync (stream, partialOutput);
+        if(inputData != nullptr) cudaFree(inputData);
+        if(partialOutput != nullptr) cudaFree(partialOutput);
+        // Use managed memory for compatibility with x86 libraries
+        cudaMallocManaged(&inputData, sizeof(float) * 4 * inputSize);
+        cudaMallocManaged(&partialOutput, sizeof(float) * 4 * inputSize);
         memoryAllocated = inputSize;
     }
 
     auto t1 = std::chrono::steady_clock::now();
     /* ----------------------------------------- */
-    
+    // Managed memory can be accessed directly from host
     pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);
-    
     /* ----------------------------------------- */
 
     auto t2 = std::chrono::steady_clock::now();
@@ -177,6 +175,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
         if (this->publishFilteredPc)
         {
+            cudaDeviceSynchronize(); // Ensure GPU operations complete
             this->publishPc(partialOutput, size, filtered_cp_pub);
         }
 
@@ -187,19 +186,26 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
     if (this->segmentFlag)
     {
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling segmentation, inputSize=%d", inputSize);
         segmentation->segment(inputData, inputSize, &partialOutput, &size);
         inputSize = size;
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Segmentation done, outputSize=%d", size);
 
         if (this->publishSegmentedPc)
         {
             if(size != 0){
+                RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Publishing segmented PC");
+                cudaDeviceSynchronize(); // Ensure GPU operations complete
                 publishPc(partialOutput, size, segmented_cp_pub);
+                RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Segmented PC published");
             }
         }
 
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Swapping pointers");
         tmp = partialOutput;
         partialOutput = inputData;
         inputData = tmp;
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Pointers swapped");
     }
 
     if (inputSize == 0 || this->skipClustering)
@@ -227,7 +233,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
     }
 
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling extractClusters, inputSize=%d", inputSize);
     this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "extractClusters done");
     // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);

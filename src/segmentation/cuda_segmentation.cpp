@@ -8,8 +8,8 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
   segP.optimizeCoefficients = params.optimizeCoefficients;
 
   cudaStreamCreate(&stream);
-  cudaMallocManaged(&modelCoefficients, sizeof(float) * 4, cudaMemAttachHost);
-  cudaStreamAttachMemAsync(stream, modelCoefficients);
+  // Use managed memory for library interface
+  cudaMallocManaged(&modelCoefficients, sizeof(float) * 4);
 }
 
 void CudaSegmentation::freeResources()
@@ -21,12 +21,17 @@ void CudaSegmentation::freeResources()
 
 void CudaSegmentation::realloc(unsigned int size)
 {
-  RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "REALLOC");
-  cudaFree(index);
+  RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "REALLOC size=%d", size);
+  cudaError_t err;
+  
+  if(index != nullptr) {
+    cudaFree(index);
+  }
+  
   cudaStreamSynchronize(stream);
-  cudaMallocManaged(&index, sizeof(int) * size, cudaMemAttachHost);
-  cudaStreamSynchronize(stream);
-  cudaStreamAttachMemAsync(stream, index);
+  
+  // Use managed memory for library interface
+  cudaMallocManaged(&index, sizeof(int) * size);
   cudaStreamSynchronize(stream);
 }
 
@@ -52,32 +57,32 @@ void CudaSegmentation::segment(
     mall_size = nCount;
   }
 
-  cudaMemcpyAsync(modelCoefficients, 0, 4 * sizeof(float), cudaMemcpyHostToDevice, stream); // Inizializza i coefficienti a zero
+  cudaMemset(modelCoefficients, 0, 4 * sizeof(float));
 
-  cudaSegmentation impl(SACMODEL_PLANE, SAC_RANSAC, stream);
+  // Scope the impl object so destructor is called before we access results
+  {
+    cudaSegmentation impl(SACMODEL_PLANE, SAC_RANSAC, stream);
 
-  impl.set(segP);
-  impl.segment(inputData, nCount, index, modelCoefficients);
+    impl.set(segP);
+    impl.segment(inputData, nCount, index, modelCoefficients);
+  }
 
   cudaDeviceSynchronize();
-
+  
   // controllo coefficienti
   if (std::isnan(modelCoefficients[0]) || std::abs(modelCoefficients[3]) > 20)
   {
     std::cout << "Segmentation non valida: coefficiente[3] = " << modelCoefficients[3] << " coefficiente [2] = " << modelCoefficients[2] << " coefficiente[1] = " << modelCoefficients[1] << std::endl;
     skip = true; // Segmentation non valida, salto parte finale
   }
-
+  
   if (!skip)
   {
     // 5) Raccolta degli inlier
     int idx = 0;
-    // std::vector<int> inliers;
-    // inliers.reserve(nCount);
     for (int i = 0; i < nCount; ++i)
     {
       if (index[i] != 1){
-        // inliers.push_back(i);
         (*out_points)[4 * idx + 0] = inputData[4 * i + 0]; // x
         (*out_points)[4 * idx + 1] = inputData[4 * i + 1]; // y
         (*out_points)[4 * idx + 2] = inputData[4 * i + 2]; // z
@@ -98,4 +103,5 @@ void CudaSegmentation::segment(
   // Pulizia delle risorse
   // CudaSegmentation::freeResources();
   skip = false; // Reset dello stato di skip per la prossima chiamata
+  // RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Returning from segment");
 }

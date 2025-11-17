@@ -64,7 +64,7 @@ class CudaClustering : public IClustering
     // float *outputEC = NULL;
 
     unsigned int *indexEC = NULL;
-    
+
     extractClusterParam_t ecp;
     cudaStream_t stream = NULL;
 
