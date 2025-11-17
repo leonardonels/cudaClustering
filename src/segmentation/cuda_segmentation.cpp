@@ -22,7 +22,6 @@ void CudaSegmentation::freeResources()
 void CudaSegmentation::realloc(unsigned int size)
 {
   RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "REALLOC size=%d", size);
-  cudaError_t err;
   
   if(index != nullptr) {
     cudaFree(index);
