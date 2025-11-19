@@ -20,11 +20,8 @@ class ControllerNode : public rclcpp::Node
 private:
         std::shared_ptr<visualization_msgs::msg::Marker> cones{new visualization_msgs::msg::Marker()};
         std::string input_topic, segmented_topic, filtered_topic, cluster_topic, frame_id;
-        bool filter, segmentFlag, publishFilteredPc, publishSegmentedPc;
+        bool filterOnZ, segmentFlag, publishFilteredPc, publishSegmentedPc;
         float downFilterLimits, upFilterLimits;
-        float downFilterLimitX, upFilterLimitX;
-        float downFilterLimitY, upFilterLimitY;
-        float downFilterLimitZ, upFilterLimitZ;
         clustering_parameters param;
         segParam_t segP;
         bool autoOptimizeCoefficients;
@@ -40,7 +37,7 @@ private:
         float *partialOutput = nullptr;
 
 
-        IFilter *cudaFilter;
+        IFilter *filter;
         IClustering *clustering;
         Isegmentation *segmentation;
 
