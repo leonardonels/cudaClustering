@@ -38,13 +38,11 @@
     minSuccessfulSegmentations: 60
 
     #options
-    filterOnZ: false
+    filterOnZ: true
     segment: true
-    
-    skipClustering: false
-    
     publishFilteredPc: true      # Enable to debug filtering
     publishSegmentedPc: true
+    skipClustering: false
     
     
 
