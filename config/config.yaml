@@ -10,10 +10,10 @@
     #clustering
     minClusterSize : 1        # Minimum cluster size to filter out noise
     maxClusterSize : 500      # Maximum size for large objects
-    voxelX: 0.4               # Down-sampling resolution in X (meters)
-    voxelY: 0.4               # Down-sampling resolution in Y (meters)
-    voxelZ: 1.0               # Down-sampling resolution in Z (meters)
-    countThreshold: 3         # Minimum points per voxel
+    voxelX: 0.5               # Down-sampling resolution in X (meters)
+    voxelY: 0.5               # Down-sampling resolution in Y (meters)
+    voxelZ: 0.5               # Down-sampling resolution in Z (meters) - must be < (upZ - downZ)
+    countThreshold: 1         # Minimum points per voxel
 
     #filter for clusters
     clusterMaxX: 0.4
@@ -24,27 +24,31 @@
     clusterMinZ: 0.1
     maxHeight: 0.4          #of the lowest point
 
-    #filter on Z
-    downFilterLimits: -0.5
-    upFilterLimits: 0.5
+    #spatial filters (applied before segmentation) - set to large values to disable
+    downFilterLimitX: -25.0   # Minimum X (meters) - filters points too far left
+    upFilterLimitX: 25.0      # Maximum X (meters) - filters points too far right
+    downFilterLimitY: -25.0   # Minimum Y (meters) - filters points too far back
+    upFilterLimitY: 25.0      # Maximum Y (meters) - filters points too far forward
+    downFilterLimitZ: -2.0    # Minimum Z (meters) - filters points below ground
+    upFilterLimitZ: 3.0       # Maximum Z (meters) - filters points above detection zone
 
     #segmentation
     distanceThreshold: 0.1
     maxIterations: 166
     probability: 0.95
+
     optimizeCoefficients: false
     autoOptimizeCoefficients: false
     maxFailedSegmentations: 10
     minSuccessfulSegmentations: 60
 
     #options
-    filterOnZ: false
-    segment: true
-    
-    skipClustering: false
-    
+    filter: true           # Enable spatial filtering (X, Y, Z) before segmentation
     publishFilteredPc: true      # Enable to debug filtering
+    
+    segment: true
     publishSegmentedPc: true
     
+    skipClustering: true
     
 

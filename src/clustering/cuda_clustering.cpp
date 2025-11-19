@@ -2,15 +2,13 @@
 #include "cuda_clustering/clustering/cluster_filtering/dimension_filter.hpp"
 #include <algorithm> // for std::min
 
-const float EPSILON = 1e-9;
-
 CudaClustering::CudaClustering(clustering_parameters& param){
-  this->ecp.minClusterSize = param.clustering.minClusterSize;                                   // Minimum cluster size to filter out noise
-  this->ecp.maxClusterSize = param.clustering.maxClusterSize;                                   // Maximum size for large objects
-  this->ecp.voxelX = param.clustering.voxelX;                                                   // Down-sampling resolution in X (meters)
-  this->ecp.voxelY = param.clustering.voxelY;                                                   // Down-sampling resolution in Y (meters)
-  this->ecp.voxelZ = std::min(param.clustering.voxelZ, param.filtering.clusterMaxZ - EPSILON);       // Down-sampling resolution in Z (meters)
-  this->ecp.countThreshold = param.clustering.countThreshold;                                   // Minimum points per voxel
+  this->ecp.minClusterSize = param.clustering.minClusterSize;           // Minimum cluster size to filter out noise
+  this->ecp.maxClusterSize = param.clustering.maxClusterSize;        // Maximum size for large objects
+  this->ecp.voxelX = param.clustering.voxelX;                  // Down-sampling resolution in X (meters)
+  this->ecp.voxelY = param.clustering.voxelY;                  // Down-sampling resolution in Y (meters)
+  this->ecp.voxelZ = param.clustering.voxelZ;                 // Down-sampling resolution in Z (meters)
+  this->ecp.countThreshold = param.clustering.countThreshold;           // Minimum points per voxel
 
   filter = new DimensionFilter(param.filtering);
   cudaStreamCreate ( &stream );
@@ -49,6 +47,31 @@ void CudaClustering::reallocateMemory(unsigned int sizeEC){
 void CudaClustering::extractClusters(float* input, unsigned int inputSize, float* outputEC, std::shared_ptr<visualization_msgs::msg::Marker> cones)
 {
   std::cout << "\n------------ CUDA Clustering ---------------- "<< std::endl;
+  
+  // Calculate point cloud bounds to understand spatial extent (stride is 4 floats per point)
+  float minX = 1e10, maxX = -1e10, minY = 1e10, maxY = -1e10, minZ = 1e10, maxZ = -1e10;
+  for(unsigned int i = 0; i < inputSize; i++) {
+    float x = input[i * 4 + 0];
+    float y = input[i * 4 + 1];
+    float z = input[i * 4 + 2];
+    minX = std::min(minX, x); maxX = std::max(maxX, x);
+    minY = std::min(minY, y); maxY = std::max(maxY, y);
+    minZ = std::min(minZ, z); maxZ = std::max(maxZ, z);
+  }
+  float spanX = maxX - minX, spanY = maxY - minY, spanZ = maxZ - minZ;
+  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), 
+    "PC bounds: X[%.2f, %.2f]=%.2fm, Y[%.2f, %.2f]=%.2fm, Z[%.2f, %.2f]=%.2fm", 
+    minX, maxX, spanX, minY, maxY, spanY, minZ, maxZ, spanZ);
+  
+  // Estimate grid size with current voxel parameters
+  int gridX = (int)std::ceil(spanX / this->ecp.voxelX);
+  int gridY = (int)std::ceil(spanY / this->ecp.voxelY);
+  int gridZ = (int)std::ceil(spanZ / this->ecp.voxelZ);
+  long long totalVoxels = (long long)gridX * gridY * gridZ;
+  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), 
+    "Estimated grid: %d x %d x %d = %lld voxels (max safe: ~50M for 32-bit)", 
+    gridX, gridY, gridZ, totalVoxels);
+  
   std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
   if(memoryAllocated < inputSize){

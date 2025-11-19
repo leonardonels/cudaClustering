@@ -65,10 +65,19 @@ class CudaFilter : public IFilter
         cudaStream_t stream = NULL;
 
         float *input = NULL;
+        float *tempOutput = NULL;  // Temporary buffer for multi-axis filtering
 
         unsigned int memoryAllocated = 0;
+        
+        // Filter limits for each axis
+        float upLimitX, downLimitX;
+        float upLimitY, downLimitY;
+        float upLimitZ, downLimitZ;
+        bool filterX, filterY, filterZ;
+        
     public:
-        CudaFilter(float upFilterLimits, float downFilterLimits);
+        CudaFilter(float upX, float downX, float upY, float downY, float upZ, float downZ);
         void reallocateMemory(unsigned int size);
         void filterPoints(float* input, unsigned int inputSize, float** output, unsigned int* outputSize);
+        ~CudaFilter();
 };
