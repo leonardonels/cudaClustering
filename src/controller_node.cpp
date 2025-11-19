@@ -153,8 +153,8 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         if(inputData != nullptr) cudaFree(inputData);
         if(partialOutput != nullptr) cudaFree(partialOutput);
         // Use managed memory for compatibility with x86 libraries
-        cudaMallocManaged(&inputData, sizeof(float) * 4 * inputSize);
-        cudaMallocManaged(&partialOutput, sizeof(float) * 4 * inputSize);
+        cudaMallocManaged(&inputData, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
+        cudaMallocManaged(&partialOutput, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
         memoryAllocated = inputSize;
     }
 

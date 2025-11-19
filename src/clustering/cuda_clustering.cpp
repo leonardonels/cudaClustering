@@ -39,7 +39,8 @@ void CudaClustering::getInfo(void)
 void CudaClustering::reallocateMemory(unsigned int sizeEC){
   if(indexEC != nullptr) cudaFree(indexEC);
   cudaStreamSynchronize(stream);
-  cudaMallocManaged(&indexEC, sizeof(unsigned int) * 4 * (sizeEC));
+  cudaMallocManaged(&indexEC, sizeof(unsigned int) * 4 * (sizeEC), cudaMemAttachHost);
+  cudaStreamAttachMemAsync(stream, indexEC);
   cudaStreamSynchronize(stream);
 }
 
@@ -53,7 +54,8 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
     memoryAllocated = inputSize;
   }
 
-  cudaMemset(indexEC, 0, sizeof(unsigned int) * 4 * (inputSize));
+  cudaMemsetAsync(indexEC, 0, sizeof(unsigned int) * 4 * (inputSize), stream);
+  cudaStreamSynchronize(stream);
   
   cudaExtractCluster cudaec(stream);
   cudaec.set(this->ecp);

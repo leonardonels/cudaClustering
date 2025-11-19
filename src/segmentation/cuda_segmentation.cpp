@@ -9,7 +9,8 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
 
   cudaStreamCreate(&stream);
   // Use managed memory for library interface
-  cudaMallocManaged(&modelCoefficients, sizeof(float) * 4);
+  cudaMallocManaged(&modelCoefficients, sizeof(float) * 4, cudaMemAttachHost);
+  cudaStreamAttachMemAsync(stream, modelCoefficients);
 }
 
 void CudaSegmentation::freeResources()
@@ -30,7 +31,8 @@ void CudaSegmentation::realloc(unsigned int size)
   cudaStreamSynchronize(stream);
   
   // Use managed memory for library interface
-  cudaMallocManaged(&index, sizeof(int) * size);
+  cudaMallocManaged(&index, sizeof(int) * size, cudaMemAttachHost);
+  cudaStreamAttachMemAsync(stream, index);
   cudaStreamSynchronize(stream);
 }
 
