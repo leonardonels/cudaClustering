@@ -8,7 +8,9 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     this->segmentation = new CudaSegmentation(segP);
     this->failedSegmentations = 0;
     this->successfulSegmentations = 0;
-    this->filter = new CudaFilter(upFilterLimits, downFilterLimits);
+    this->cudaFilter = new CudaFilter(upFilterLimitX, downFilterLimitX, 
+                                   upFilterLimitY, downFilterLimitY, 
+                                   upFilterLimitZ, downFilterLimitZ);
 
     this->clustering = new CudaClustering(param);
 
@@ -18,7 +20,7 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10), rmw_qos_profile_sensor_data);
 
     this->cones_array_pub = this->create_publisher<visualization_msgs::msg::Marker>(this->cluster_topic, 100);
-    if(this->filterOnZ && this->publishFilteredPc)
+    if(this->filter && this->publishFilteredPc)
         this->filtered_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->filtered_topic, 100);
     if(this->segmentFlag && this->publishSegmentedPc)
         this->segmented_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->segmented_topic, 100);
@@ -70,10 +72,14 @@ void ControllerNode::loadParameters()
     declare_parameter("clusterMinZ", 0.0);
     declare_parameter("maxHeight", 0.0);
 
-    declare_parameter("downFilterLimits", 0.0);
-    declare_parameter("upFilterLimits", 0.0);
+    declare_parameter("downFilterLimitX", -1e10);
+    declare_parameter("upFilterLimitX", 1e10);
+    declare_parameter("downFilterLimitY", -1e10);
+    declare_parameter("upFilterLimitY", 1e10);
+    declare_parameter("downFilterLimitZ", 0.0);
+    declare_parameter("upFilterLimitZ", 0.0);
 
-    declare_parameter("filterOnZ", false);
+    declare_parameter("filter", false);
     declare_parameter("segment", false);
     declare_parameter("publishFilteredPc", false);
     declare_parameter("publishSegmentedPc", false);
@@ -107,10 +113,14 @@ void ControllerNode::loadParameters()
     get_parameter("clusterMinZ", this->param.filtering.clusterMinZ);
     get_parameter("maxHeight", this->param.filtering.maxHeight);
 
-    get_parameter("downFilterLimits", this->downFilterLimits);
-    get_parameter("upFilterLimits", this->upFilterLimits);
+    get_parameter("downFilterLimitX", this->downFilterLimitX);
+    get_parameter("upFilterLimitX", this->upFilterLimitX);
+    get_parameter("downFilterLimitY", this->downFilterLimitY);
+    get_parameter("upFilterLimitY", this->upFilterLimitY);
+    get_parameter("downFilterLimitZ", this->downFilterLimitZ);
+    get_parameter("upFilterLimitZ", this->upFilterLimitZ);
     
-    get_parameter("filterOnZ", this->filterOnZ);
+    get_parameter("filter", this->filter);
     get_parameter("segment", this->segmentFlag);
     get_parameter("publishFilteredPc", this->publishFilteredPc);
     get_parameter("publishSegmentedPc", this->publishSegmentedPc);
@@ -168,9 +178,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
 
-    if (this->filterOnZ)
+    if (this->filter)
     {
-        this->filter->filterPoints(inputData, inputSize, &partialOutput, &size);
+        this->cudaFilter->filterPoints(inputData, inputSize, &partialOutput, &size);
         inputSize = size;
 
         if (this->publishFilteredPc)

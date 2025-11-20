@@ -25,8 +25,12 @@
     maxHeight: 0.4          #of the lowest point
 
     #filter on Z
-    downFilterLimits: -0.5
-    upFilterLimits: 0.5
+    downFilterLimitX: -10.0
+    upFilterLimitX: 10.0
+    downFilterLimitY: -50.0
+    upFilterLimitY: 50.0
+    downFilterLimitZ: -50.0
+    upFilterLimitZ: 50.0
 
     #segmentation
     distanceThreshold: 0.15
@@ -38,7 +42,7 @@
     minSuccessfulSegmentations: 60
 
     #options
-    filterOnZ: false
+    filter: false
     publishFilteredPc: false
     
     segment: true
