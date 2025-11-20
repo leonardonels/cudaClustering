@@ -23,11 +23,15 @@ cd cuda_clustering
 colcon build
 
 ## Usage
-Edit parameters in config/clustering.yaml.
+Edit parameters in config/config.yaml
 
 ## Run
-source install/setup.bash
+```bash
+cd ~/ros2_ws
+source ./install/setup.bash
 ros2 launch clustering cuda_clustering_launch.py
+```
 
-## TO FIX 
-1. The clustering stops working while the filter on Z is activated 
+## TODO
+1. FIX: The clustering stops working while the filter on Z is activated 
+2. ADD: Parameters fixed at compile time to recude "if" comparisons

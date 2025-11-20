@@ -1,0 +1,50 @@
+#params from adaprive clustering 
+/clustering_node:
+  ros__parameters:
+    input_topic: /lidar_points #/lidar_points #/patchworkpp/nonground
+    segmented_topic: /segmented_points
+    filtered_topic: /filtered_points
+    cluster_topic: /clusters #/perception/newclusters
+    frame_id: "hesai_lidar"
+
+    #clustering
+    minClusterSize : 5        # Minimum cluster size to filter out noise
+    maxClusterSize : 500      # Maximum size for large objects
+    voxelX: 0.8               # Down-sampling resolution in X (meters)
+    voxelY: 0.8               # Down-sampling resolution in Y (meters)
+    voxelZ: 0.8               # Down-sampling resolution in Z (meters)
+    countThreshold: 10         # Minimum points per voxel
+
+    #filter for clusters
+    clusterMaxX: 0.4
+    clusterMaxY: 0.4
+    clusterMaxZ: 0.4
+    clusterMinX: -0.1
+    clusterMinY: -0.1
+    clusterMinZ: 0.1
+    maxHeight: 0.4          #of the lowest point
+
+    #filter on Z
+    downFilterLimits: -0.5
+    upFilterLimits: 0.5
+
+    #segmentation
+    distanceThreshold: 0.15
+    maxIterations: 500
+    probability: 0.75
+    optimizeCoefficients: false
+    autoOptimizeCoefficients: false
+    maxFailedSegmentations: 10
+    minSuccessfulSegmentations: 60
+
+    #options
+    filterOnZ: false
+    publishFilteredPc: false
+    
+    segment: true
+    publishSegmentedPc: false
+    
+    skipClustering: false
+    
+    
+
