@@ -33,9 +33,9 @@
     upFilterLimitZ: 50.0
 
     #segmentation
-    distanceThreshold: 0.15
+    distanceThreshold: 0.1
     maxIterations: 500
-    probability: 0.75
+    probability: 0.95
     optimizeCoefficients: false
     autoOptimizeCoefficients: false
     maxFailedSegmentations: 10
@@ -46,9 +46,9 @@
     publishFilteredPc: false
     
     segment: true
-    publishSegmentedPc: false
+    publishSegmentedPc: true
     
-    skipClustering: false
+    skipClustering: true
     
     
 

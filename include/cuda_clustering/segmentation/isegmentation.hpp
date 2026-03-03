@@ -15,7 +15,8 @@ public:
      * out_num_points: actual number of points in segmentation result
      */
     virtual void segment(float *inputData,
-                         int nCount,
-                         float **out_points,
-                         unsigned int* out_num_points) = 0;
+                         unsigned int nCount,
+                         float *out_points,
+                         unsigned int* out_num_points,
+                         cudaStream_t stream) = 0;
 };

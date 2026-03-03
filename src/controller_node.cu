@@ -46,12 +46,11 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     cones->pose.orientation.z = 0.0;
     cones->pose.orientation.w = 1.0;
 
-    cudaStreamCreate ( &stream );
+    cudaStreamCreate(&copy_stream);
 }
 
 void ControllerNode::loadParameters()
 {
-
     declare_parameter("input_topic", "/lidar_points");
     declare_parameter("segmented_topic", "/segmented_points");
     declare_parameter("filtered_topic", "/filtered_points");
@@ -143,7 +142,8 @@ void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publish
     pcl_cloud->height = 1;
     pcl_cloud->points.resize(size);
 
-    memcpy(pcl_cloud->points.data(), points, size * 4 * sizeof(float));
+    // explicitly cast to void* to silence the object-memory access warning
+    memcpy(static_cast<void*>(pcl_cloud->points.data()), points, size * 4 * sizeof(float));
 
     pcl::toROSMsg(*pcl_cloud, pc);
     pc.header.frame_id = this->frame_id;
@@ -152,72 +152,110 @@ void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publish
 
 void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_cloud)
 {
+    // -----------------------------------------
+    // Start timing
+    // -----------------------------------------
     std::chrono::steady_clock::time_point tstart = std::chrono::steady_clock::now();
+
+    // ----------------------------------------------
+    // initialize variables and clear cones marker
+    // ----------------------------------------------
     cones->points = {};
     unsigned int size = 0;
-    float* tmp = NULL;
+    float* raw_in = nullptr;
+    float* raw_out = nullptr;
 
     unsigned int inputSize = sub_cloud->width * sub_cloud->height;
     
-    if(memoryAllocated < inputSize){
-        if(inputData != nullptr) cudaFree(inputData);
-        if(partialOutput != nullptr) cudaFree(partialOutput);
-        // Use managed memory for compatibility with x86 libraries
-        cudaMallocManaged(&inputData, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
-        cudaMallocManaged(&partialOutput, sizeof(float) * 4 * inputSize, cudaMemAttachHost);
-        memoryAllocated = inputSize;
-    }
-
+    size_t totalElements = inputSize * 4;      // input size times number of fields for each point
+    
     auto t1 = std::chrono::steady_clock::now();
-    /* ----------------------------------------- */
-    // Managed memory can be accessed directly from host
-    pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);
-    /* ----------------------------------------- */
+    
+    // ----------------------------------------------------------------------------------
+    // removes the malloc logic inside .resize() by reserving enough memory beforehand
+    // ----------------------------------------------------------------------------------
+    if (h_input.capacity() < totalElements) {
+        h_input.reserve(totalElements);
+        d_input.reserve(totalElements);
+        d_output.reserve(totalElements);
+    }
+    
+    // ----------------------------------------------------------------------------------
+    // if the new size is smaller, then resize should be almost instantaneous
+    // ----------------------------------------------------------------------------------
+    h_input.resize(totalElements);
+    d_input.resize(totalElements);
+    d_output.resize(totalElements);
+    
+    // -------------------------------------------------------
+    // convert PointCloud2 to float array and copy to device
+    // -------------------------------------------------------
+    pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, h_input.data());
+
+    d_input = h_input;
 
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
 
+    // -----------------------------------------
+    // CUDA Filtering (if enabled)
+    // -----------------------------------------
     if (this->filter)
     {
-        this->cudaFilter->filterPoints(inputData, inputSize, &partialOutput, &size);
+        // ----------------------------------------------
+        // Get raw pointers for your custom CUDA kernel
+        // ----------------------------------------------
+        raw_in = thrust::raw_pointer_cast(d_input.data());
+        raw_out = thrust::raw_pointer_cast(d_output.data());
+
+        // ----------------------------------------------
+        // Call for cudaFilter
+        // ----------------------------------------------
+        this->cudaFilter->filterPoints(raw_in, inputSize, &raw_out, &size);
         inputSize = size;
+
+        d_input.swap(d_output);
 
         if (this->publishFilteredPc)
         {
-            cudaDeviceSynchronize(); // Ensure GPU operations complete
-            this->publishPc(partialOutput, size, filtered_cp_pub);
+            // After swap, d_input holds the filtered result
+            float* filtered_data = thrust::raw_pointer_cast(d_input.data());
+            cudaMemcpyAsync(h_input.data(), filtered_data, size * 4 * sizeof(float), cudaMemcpyDeviceToHost, copy_stream);
+            cudaStreamSynchronize(copy_stream);
+            this->publishPc(h_input.data(), size, filtered_cp_pub);
         }
 
-        tmp = partialOutput;
-        partialOutput = inputData;
-        inputData = tmp;
     }
 
+    // -----------------------------------------
+    // CUDA Segmentation (if enabled)
+    // -----------------------------------------
     if (this->segmentFlag)
     {
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling segmentation, inputSize=%d", inputSize);
-        segmentation->segment(inputData, inputSize, &partialOutput, &size);
+        raw_in = thrust::raw_pointer_cast(d_input.data());
+        raw_out = thrust::raw_pointer_cast(d_output.data());
+
+        segmentation->segment(raw_in, inputSize, raw_out, &size, compute_stream);
         inputSize = size;
+
+        d_input.swap(d_output);
+
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Segmentation done, outputSize=%d", size);
 
-        if (this->publishSegmentedPc)
+        if (this->publishSegmentedPc && size != 0)
         {
-            if(size != 0){
-                RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Publishing segmented PC");
-                cudaDeviceSynchronize(); // Ensure GPU operations complete
-                publishPc(partialOutput, size, segmented_cp_pub);
-                RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Segmented PC published");
-            }
+            // After swap, d_input holds the segmented result
+            float* segmented_data = thrust::raw_pointer_cast(d_input.data());
+            cudaMemcpyAsync(h_input.data(), segmented_data, size * 4 * sizeof(float), cudaMemcpyDeviceToHost, copy_stream);
+            cudaStreamSynchronize(copy_stream);
+            publishPc(h_input.data(), size, segmented_cp_pub);
         }
-
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Swapping pointers");
-        tmp = partialOutput;
-        partialOutput = inputData;
-        inputData = tmp;
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Pointers swapped");
     }
 
+    // -----------------------------------------------------------
+    // failed experiment on a sort of auto optimisation feature
+    // -----------------------------------------------------------
     if (inputSize == 0 || this->skipClustering)
     {
         this->failedSegmentations++;
@@ -242,11 +280,24 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         this->segP.optimizeCoefficients = true;
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
     }
+    // -----------------------------------------------------------
 
+    // -----------------------------------------
+    // CUDA Clustering (if enabled)
+    // -----------------------------------------    
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling extractClusters, inputSize=%d", inputSize);
-    this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
+
+    raw_in = thrust::raw_pointer_cast(d_input.data());
+    raw_out = thrust::raw_pointer_cast(d_output.data());
+
+    // -----------------------------------------------------------
+    // call to extractClusters() from NVIDIA's precompiled library
+    // -----------------------------------------------------------
+    this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
+
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "extractClusters done");
     // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+    
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());

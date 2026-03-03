@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.8)
-project(clustering)
+project(clustering LANGUAGES CXX C CUDA)
+
+add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra)
 endif()
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")
@@ -37,14 +39,12 @@ include_directories(${CUDA_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_definitions(-std=c++17 -g -lboost_thread-mt)
 
-add_library(${PROJECT_NAME} src/controller_node.cpp)
+add_library(${PROJECT_NAME} src/controller_node.cu)
 
 add_executable(clustering_node
-  src/controller_node.cpp
   src/main.cpp
   src/clustering/cuda_clustering.cpp
   src/filtering/cuda_filtering.cpp
-  src/segmentation/cuda_segmentation.cpp
 )
 target_link_libraries(clustering_node
   ${PCL_LIBRARIES}
@@ -72,7 +72,7 @@ link_directories(libcudasegmentation)
 add_library(cuda_clustering src/clustering/cuda_clustering.cpp)
 add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.cpp)
 add_library(cuda_filtering src/filtering/cuda_filtering.cpp)
-add_library(cuda_segmentation src/segmentation/cuda_segmentation.cpp)
+add_library(cuda_segmentation src/segmentation/cuda_segmentation.cu)
 
 # Optimized pointcloud converter library with -O3
 add_library(pointcloud_converter src/utils/pointcloud_converter.cpp)

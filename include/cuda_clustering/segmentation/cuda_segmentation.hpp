@@ -2,6 +2,12 @@
 
 #include "isegmentation.hpp"
 
+#include <cuda_runtime.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/system/cuda/experimental/pinned_allocator.h>
+#include <vector>
+
 typedef enum
 {
     SACMODEL_PLANE = 0,
@@ -48,7 +54,6 @@ class cudaSegmentation
 public:
     // Now Just support: SAC_RANSAC + SACMODEL_PLANE
     cudaSegmentation(int ModelType, int MethodType, cudaStream_t stream = 0);
-
     ~cudaSegmentation(void);
 
     /*
@@ -68,23 +73,35 @@ private:
 
 class CudaSegmentation : public Isegmentation
 {
-
 private:
-public:
-    // unsigned int memory_allocated = 0;
-    float *input = nullptr;
-    int *index = nullptr;
-    float *modelCoefficients = nullptr;
-    cudaStream_t stream = NULL;
     segParam_t segP;
     bool skip = false;
-    int mall_size = 0;
+
+    // -------------------------------------------------------------------------
+    // Device vectors for GPU data and std::vector for coefficients
+    // -------------------------------------------------------------------------
+    thrust::device_vector<int> d_index;
+    thrust::host_vector<float> h_modelCoefficients;
+    thrust::device_vector<float> d_input;
+    thrust::device_vector<float> d_output;
+
+    // RANSAC temporary buffers
+    thrust::device_vector<int> d_counts;
+    thrust::device_vector<float4> d_planes;
+    thrust::host_vector<int> h_counts;
+    thrust::host_vector<float4> h_planes;
+
+    // -------------------------------------------------------------------------
+    // a single device integer to count how many points survived filtering
+    // -------------------------------------------------------------------------
+    thrust::device_vector<unsigned int> d_out_count;
+
+public:
     CudaSegmentation(segParam_t& params);
-    // void reallocateMemory(unsigned int size);
-    void freeResources();
-    void realloc(unsigned int size);
+    
     void segment(float *inputData,
-                 int nCount,
-                 float **out_points,
-                 unsigned int *out_num_points) override;
+                 unsigned int nCount,
+                 float *out_points,
+                 unsigned int *out_num_points,
+                 cudaStream_t stream) override;
 };
