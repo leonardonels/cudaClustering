@@ -233,8 +233,6 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
         d_input.swap(d_output);
 
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Segmentation done, outputSize=%d", size);
-
         if (this->publishSegmentedPc && size != 0)
         {
             // After swap, d_input holds the segmented result
@@ -250,8 +248,6 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     // -----------------------------------------
     if (this->clusteringFlag)
     {
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling extractClusters, inputSize=%d", inputSize);
-
         raw_in = thrust::raw_pointer_cast(d_input.data());
         raw_out = thrust::raw_pointer_cast(d_output.data());
 
@@ -259,9 +255,6 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         // call to extractClusters() from NVIDIA's precompiled library
         // -----------------------------------------------------------
         this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
-
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "extractClusters done");
-        // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
 
         cones->header.stamp = this->now();
         if(cones->points.size() != 0) cones_array_pub->publish(*cones);
