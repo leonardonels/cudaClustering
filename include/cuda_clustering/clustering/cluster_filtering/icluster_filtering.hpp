@@ -9,5 +9,6 @@ struct cluster_filter
 class IClusterFiltering
 {
     public:
+        virtual ~IClusterFiltering() = default;
         virtual std::optional<geometry_msgs::msg::Point> analiseCluster(float* cluster, unsigned int points_num) = 0;
 };

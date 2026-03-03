@@ -58,7 +58,6 @@ add_library(${PROJECT_NAME} src/controller_node.cu)
 
 add_executable(clustering_node
   src/main.cpp
-  src/clustering/cuda_clustering.cpp
 )
 target_link_libraries(clustering_node
   ${PCL_LIBRARIES}
@@ -70,12 +69,7 @@ target_link_libraries(clustering_node
 )
 target_include_directories(clustering_node PUBLIC include)
 
-add_library(libcudacluster SHARED IMPORTED)
-set_target_properties( libcudacluster PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudacluster.so )
-
-link_directories(libcudacluster)
-
-add_library(cuda_clustering src/clustering/cuda_clustering.cpp)
+add_library(cuda_clustering src/clustering/cuda_clustering.cu)
 add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.cpp)
 add_library(cuda_filtering src/filtering/cuda_filtering.cu)
 add_library(cuda_segmentation src/segmentation/cuda_segmentation.cu)
@@ -95,7 +89,6 @@ ament_target_dependencies(cluster_filtering
 )
 
 target_link_libraries(cuda_clustering
-  libcudacluster
   cluster_filtering
 )
 ament_target_dependencies(cuda_clustering
@@ -134,17 +127,10 @@ target_include_directories(clustering PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(clustering PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
-install(TARGETS clustering_node
-  DESTINATION lib/${PROJECT_NAME})
-
 
 # Install launch directory
 install(DIRECTORY
   launch
-  DESTINATION share/${PROJECT_NAME}
-)
-install(DIRECTORY
-  lib
   DESTINATION share/${PROJECT_NAME}
 )
 

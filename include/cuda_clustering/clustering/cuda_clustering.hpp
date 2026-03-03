@@ -2,7 +2,9 @@
 
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include "cuda_runtime.h"
+#include <cuda_runtime.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
 
@@ -16,30 +18,6 @@ typedef struct {
   float voxelZ;
   int countThreshold;
 } extractClusterParam_t;
-
-class cudaExtractCluster
-{
-  public:
-    cudaExtractCluster(cudaStream_t stream = 0);
-    ~cudaExtractCluster(void);
-    int set(extractClusterParam_t param);
-    int extract(float *cloud_in, int nCount, float *output, unsigned int *index);
-  private:
-    void *m_handle = NULL;
-};
-
-#define checkCudaErrors(status)                                   \
-{                                                                 \
-  if (status != 0)                                                \
-  {                                                               \
-    std::cout << "Cuda failure: " << cudaGetErrorString(status)   \
-              << " at line " << __LINE__                          \
-              << " in file " << __FILE__                          \
-              << " error status: " << status                      \
-              << std::endl;                                       \
-              abort();                                            \
-    }                                                             \
-}
 
 struct clustering_parameters
 {
@@ -56,24 +34,36 @@ struct clustering_parameters
 class CudaClustering : public IClustering
 {
   private:
-    float clusterMaxX = 0.5, clusterMaxY = 0.5, clusterMaxZ = 0.5, maxHeight = 1.0 ;
-    unsigned int memoryAllocated = 0;
-
-    // float *inputEC = NULL;
-
-    // float *outputEC = NULL;
-
-    unsigned int *indexEC = NULL;
-
     extractClusterParam_t ecp;
     cudaStream_t stream = NULL;
 
-    void reallocateMemory(unsigned int sizeEC);
+    // -------------------------------------------------------------------------
+    // Device vectors replace cudaMallocManaged
+    // -------------------------------------------------------------------------
+    // voxelization
+    thrust::device_vector<int>          d_voxelKeys;     // voxel hash per point
+    thrust::device_vector<int>          d_sortedKeys;    // sorted voxel hashes
+    thrust::device_vector<unsigned int> d_sortedIndices; // original indices after sort
+    thrust::device_vector<int>          d_uniqueKeys;    // unique voxel hashes
+    thrust::device_vector<unsigned int> d_voxelCounts;   // points per voxel
+    thrust::device_vector<unsigned int> d_voxelOffsets;  // start offset per voxel
+
+    // union-find clustering
+    thrust::device_vector<int>          d_parent;        // union-find parent array
+    thrust::device_vector<int>          d_clusterLabels; // final cluster label per voxel
+
+    // output
+    thrust::device_vector<unsigned int> d_indexEC;       // cluster index array
+    thrust::host_vector<unsigned int>   h_indexEC;       // host mirror
+
+    double totalTime = 0.0;
+    unsigned int iterations = 0;
 
   public:
     CudaClustering(clustering_parameters& param);
+    ~CudaClustering();
     void getInfo();
 
-    void extractClusters(float* input, unsigned int inputSize, float* outputEC, std::shared_ptr<visualization_msgs::msg::Marker> cones);
-    ~CudaClustering();
+    void extractClusters(float* input, unsigned int inputSize, float* outputEC,
+                         std::shared_ptr<visualization_msgs::msg::Marker> cones);
 };

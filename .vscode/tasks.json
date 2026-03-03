@@ -5,6 +5,11 @@
 			"label": "Delete old cuda_filtering.cpp",
 			"type": "shell",
 			"command": "rm /home/leo/ros2_ws/src/cudaClustering/src/filtering/cuda_filtering.cpp"
+		},
+		{
+			"label": "Delete old cuda_clustering.cpp",
+			"type": "shell",
+			"command": "rm /home/leo/ros2_ws/src/cudaClustering/src/clustering/cuda_clustering.cpp"
 		}
 	]
 }
