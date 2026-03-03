@@ -36,10 +36,6 @@
     distanceThreshold: 0.1
     maxIterations: 500
     probability: 0.95
-    optimizeCoefficients: false
-    autoOptimizeCoefficients: false
-    maxFailedSegmentations: 10
-    minSuccessfulSegmentations: 60
 
     #options
     filter: false
@@ -48,7 +44,7 @@
     segment: true
     publishSegmentedPc: true
     
-    skipClustering: true
+    clustering: false
     
     
 

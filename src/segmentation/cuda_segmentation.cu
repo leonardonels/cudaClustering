@@ -180,7 +180,6 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
   segP.distanceThreshold = params.distanceThreshold;
   segP.maxIterations = params.maxIterations;
   segP.probability = params.probability;
-  segP.optimizeCoefficients = params.optimizeCoefficients;
 
   h_modelCoefficients.resize(4);
   d_out_count.resize(1);

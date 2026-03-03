@@ -6,8 +6,6 @@ ControllerNode::ControllerNode() : Node("clustering_node")
 
 
     this->segmentation = new CudaSegmentation(segP);
-    this->failedSegmentations = 0;
-    this->successfulSegmentations = 0;
     this->cudaFilter = new CudaFilter(upFilterLimitX, downFilterLimitX, 
                                    upFilterLimitY, downFilterLimitY, 
                                    upFilterLimitZ, downFilterLimitZ);
@@ -20,7 +18,7 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10), rmw_qos_profile_sensor_data);
 
     this->cones_array_pub = this->create_publisher<visualization_msgs::msg::Marker>(this->cluster_topic, 100);
-    if(this->filter && this->publishFilteredPc)
+    if(this->filterFlag && this->publishFilteredPc)
         this->filtered_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->filtered_topic, 100);
     if(this->segmentFlag && this->publishSegmentedPc)
         this->segmented_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->segmented_topic, 100);
@@ -85,11 +83,7 @@ void ControllerNode::loadParameters()
     declare_parameter("distanceThreshold", 0.15);
     declare_parameter("maxIterations", 166);
     declare_parameter("probability", 0.95);
-    declare_parameter("optimizeCoefficients", false);
-    declare_parameter("autoOptimizeCoefficients", false);
-    declare_parameter("maxFailedSegmentations", 10);
-    declare_parameter("minSuccessfulSegmentations", 60);
-    declare_parameter("skipClustering", false);
+    declare_parameter("clustering", true);
 
 
     get_parameter("input_topic", this->input_topic);
@@ -119,18 +113,14 @@ void ControllerNode::loadParameters()
     get_parameter("downFilterLimitZ", this->downFilterLimitZ);
     get_parameter("upFilterLimitZ", this->upFilterLimitZ);
     
-    get_parameter("filter", this->filter);
+    get_parameter("filter", this->filterFlag);
     get_parameter("segment", this->segmentFlag);
     get_parameter("publishFilteredPc", this->publishFilteredPc);
     get_parameter("publishSegmentedPc", this->publishSegmentedPc);
     get_parameter("distanceThreshold", this->segP.distanceThreshold);
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
-    get_parameter("optimizeCoefficients", this->segP.optimizeCoefficients);
-    get_parameter("autoOptimizeCoefficients", this->autoOptimizeCoefficients);
-    get_parameter("maxFailedSegmentations", this->maxFailedSegmentations);
-    get_parameter("minSuccessfulSegmentations", this->minSuccessfulSegmentations);
-    get_parameter("skipClustering", this->skipClustering);
+    get_parameter("clustering", this->clusteringFlag);
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -201,7 +191,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     // -----------------------------------------
     // CUDA Filtering (if enabled)
     // -----------------------------------------
-    if (this->filter)
+    if (this->filterFlag)
     {
         // ----------------------------------------------
         // Get raw pointers for your custom CUDA kernel
@@ -253,59 +243,31 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         }
     }
 
-    // -----------------------------------------------------------
-    // failed experiment on a sort of auto optimisation feature
-    // -----------------------------------------------------------
-    if (inputSize == 0 || this->skipClustering)
-    {
-        this->failedSegmentations++;
-        if(this->autoOptimizeCoefficients && this->failedSegmentations >= this->maxFailedSegmentations){
-            this->failedSegmentations = 0;
-            this->segP.optimizeCoefficients = false;
-            RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: disabling coefficients optimization.");
-        }
-
-        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-        RCLCPP_WARN(rclcpp::get_logger("clustering_node"), "No points to cluster.");
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
-        std::cout << "\n------------------------------------ "<< std::endl;
-        return;
-    }
-
-    this->successfulSegmentations++;
-
-    if(this->autoOptimizeCoefficients && !this->segP.optimizeCoefficients && this->successfulSegmentations >= this->minSuccessfulSegmentations){
-        this->successfulSegmentations = 0;
-        this->segP.optimizeCoefficients = true;
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
-    }
-    // -----------------------------------------------------------
-
     // -----------------------------------------
     // CUDA Clustering (if enabled)
-    // -----------------------------------------    
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling extractClusters, inputSize=%d", inputSize);
+    // -----------------------------------------
+    if (this->clusteringFlag)
+    {
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Calling extractClusters, inputSize=%d", inputSize);
 
-    raw_in = thrust::raw_pointer_cast(d_input.data());
-    raw_out = thrust::raw_pointer_cast(d_output.data());
+        raw_in = thrust::raw_pointer_cast(d_input.data());
+        raw_out = thrust::raw_pointer_cast(d_output.data());
 
-    // -----------------------------------------------------------
-    // call to extractClusters() from NVIDIA's precompiled library
-    // -----------------------------------------------------------
-    this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
+        // -----------------------------------------------------------
+        // call to extractClusters() from NVIDIA's precompiled library
+        // -----------------------------------------------------------
+        this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
 
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "extractClusters done");
-    // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "extractClusters done");
+        // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+
+        cones->header.stamp = this->now();
+        if(cones->points.size() != 0) cones_array_pub->publish(*cones);
+    }
     
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
-    std::cout << "\n------------------------------------ "<< std::endl;
-
-
-    cones->header.stamp = this->now();
-    if(cones->points.size() != 0)
-        cones_array_pub->publish(*cones);
+    std::cout << "\n------------------------------------------------------- "<< std::endl;
     
 }
