@@ -27,8 +27,8 @@
     #filter
     downFilterLimitX: -10.0
     upFilterLimitX: 10.0
-    downFilterLimitY: -10.0
-    upFilterLimitY: 10.0
+    downFilterLimitY: -50.0
+    upFilterLimitY: 50.0
     downFilterLimitZ: -50.0
     upFilterLimitZ: 50.0
 
@@ -38,8 +38,8 @@
     probability: 0.95
 
     #options
-    filter: true
-    publishFilteredPc: true
+    filter: false
+    publishFilteredPc: false
     
     segment: true
     publishSegmentedPc: true
