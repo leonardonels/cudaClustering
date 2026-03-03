@@ -186,7 +186,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
+    std::cout << "--------------------- Conversion ----------------------\n"
+              << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" 
+              << "\n-------------------------------------------------------"<< std::endl;
 
     // -----------------------------------------
     // CUDA Filtering (if enabled)
@@ -269,7 +271,8 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     totalTime += time_span.count();
     iterations++;
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.\n>>>> AVG TIME: %f ms OVER %d iterations.", time_span.count(), totalTime / iterations, iterations);
-    std::cout << "\n------------------------------------------------------- "<< std::endl;
+    std::cout << "\n--------------------- Total Time ----------------------\n"
+              << "Total processing time for this callback: " << time_span.count() << " ms"
+              << "\n-------------------------------------------------------\n"<< std::endl;
     
 }

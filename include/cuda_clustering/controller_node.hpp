@@ -14,6 +14,15 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
+#ifdef USE_PINNED_MEMORY
+#include <thrust/system/cuda/experimental/pinned_allocator.h>
+template <typename T>
+using pinned_host_vector = thrust::host_vector<T, thrust::cuda::experimental::pinned_allocator<T>>;
+#else
+template <typename T>
+using pinned_host_vector = thrust::host_vector<T>;
+#endif
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -36,18 +45,9 @@ private:
         unsigned int iterations = 0;
 
         // ---------------------------------------------------------------------------
-        // update from float pointer to thrust vectors for better memory management
-        // ---------------------------------------------------------------------------
-        // cudaStream_t stream = NULL;
-        // unsigned int memoryAllocated = 0;
-        // float *inputData = nullptr;
-        // float *partialOutput = nullptr;
-        // ---------------------------------------------------------------------------
-
-        // ---------------------------------------------------------------------------
         // using pinned host memory instead of heap-allocated memory
         // ---------------------------------------------------------------------------
-        thrust::host_vector<float> h_input;
+        pinned_host_vector<float> h_input;
 
         thrust::device_vector<float> d_input;
         thrust::device_vector<float> d_output;
@@ -59,9 +59,6 @@ private:
         IFilter *cudaFilter;
         IClustering *clustering;
         Isegmentation *segmentation;
-
-        /* Publisher */
-        // rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pose_array_pub_;
 
         /* Subscriber */
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub;

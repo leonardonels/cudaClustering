@@ -346,11 +346,8 @@ void CudaSegmentation::segment(
     iterations++;
     std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
               << "\nSegmentation average duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
-              << "\n------------------------------------------------------- \n" << std::endl;
+              << "\n-------------------------------------------------------" << std::endl;
   }
 
-  // Pulizia delle risorse
-  // CudaSegmentation::freeResources();
   skip = false; // Reset dello stato di skip per la prossima chiamata
-  // RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Returning from segment");
 }

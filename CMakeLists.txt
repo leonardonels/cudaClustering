@@ -7,6 +7,21 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra)
 endif()
 
+# Pinned memory works well on x86 but can cause issues on Jetson (ARM).
+# Auto-detect architecture and set the default accordingly.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+  option(USE_PINNED_MEMORY "Use CUDA pinned (page-locked) host memory" ON)
+else()
+  option(USE_PINNED_MEMORY "Use CUDA pinned (page-locked) host memory" OFF)
+endif()
+
+if(USE_PINNED_MEMORY)
+  message(STATUS "Pinned host memory: ENABLED")
+  add_definitions(-DUSE_PINNED_MEMORY)
+else()
+  message(STATUS "Pinned host memory: DISABLED")
+endif()
+
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -44,7 +59,6 @@ add_library(${PROJECT_NAME} src/controller_node.cu)
 add_executable(clustering_node
   src/main.cpp
   src/clustering/cuda_clustering.cpp
-  src/filtering/cuda_filtering.cpp
 )
 target_link_libraries(clustering_node
   ${PCL_LIBRARIES}
@@ -59,19 +73,18 @@ target_include_directories(clustering_node PUBLIC include)
 add_library(libcudacluster SHARED IMPORTED)
 set_target_properties( libcudacluster PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudacluster.so )
 
-add_library(libcudafilter SHARED IMPORTED)
-set_target_properties( libcudafilter PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudafilter.so )
+# libcudafilter replaced by custom CUDA kernels in cuda_filtering.cu
 
 add_library(libcudasegmentation SHARED IMPORTED)
 set_target_properties( libcudasegmentation PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudasegmentation.so )
 
 link_directories(libcudacluster)
-link_directories(libcudafilter)
+
 link_directories(libcudasegmentation)
 
 add_library(cuda_clustering src/clustering/cuda_clustering.cpp)
 add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.cpp)
-add_library(cuda_filtering src/filtering/cuda_filtering.cpp)
+add_library(cuda_filtering src/filtering/cuda_filtering.cu)
 add_library(cuda_segmentation src/segmentation/cuda_segmentation.cu)
 
 # Optimized pointcloud converter library with -O3
@@ -95,9 +108,6 @@ target_link_libraries(cuda_clustering
 ament_target_dependencies(cuda_clustering
   rclcpp
   visualization_msgs
-)
-target_link_libraries(cuda_filtering
-  libcudafilter
 )
 ament_target_dependencies(cuda_filtering
   rclcpp

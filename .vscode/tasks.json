@@ -1,0 +1,10 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Delete old cuda_filtering.cpp",
+			"type": "shell",
+			"command": "rm /home/leo/ros2_ws/src/cudaClustering/src/filtering/cuda_filtering.cpp"
+		}
+	]
+}
