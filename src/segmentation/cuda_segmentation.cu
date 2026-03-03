@@ -342,7 +342,10 @@ void CudaSegmentation::segment(
 
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
+    totalTime += duration;
+    iterations++;
     std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
+              << "\nSegmentation average duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
               << "\n------------------------------------------------------- \n" << std::endl;
   }
 

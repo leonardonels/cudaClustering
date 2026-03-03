@@ -267,7 +267,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
+    totalTime += time_span.count();
+    iterations++;
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.\n>>>> AVG TIME: %f ms OVER %d iterations.", time_span.count(), totalTime / iterations, iterations);
     std::cout << "\n------------------------------------------------------- "<< std::endl;
     
 }

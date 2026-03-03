@@ -5,7 +5,6 @@
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/system/cuda/experimental/pinned_allocator.h>
 #include <vector>
 
 typedef enum
@@ -76,6 +75,9 @@ class CudaSegmentation : public Isegmentation
 private:
     segParam_t segP;
     bool skip = false;
+
+    double totalTime = 0.0;
+    unsigned int iterations = 0;
 
     // -------------------------------------------------------------------------
     // Device vectors for GPU data and std::vector for coefficients
