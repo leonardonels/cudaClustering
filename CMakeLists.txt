@@ -73,14 +73,7 @@ target_include_directories(clustering_node PUBLIC include)
 add_library(libcudacluster SHARED IMPORTED)
 set_target_properties( libcudacluster PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudacluster.so )
 
-# libcudafilter replaced by custom CUDA kernels in cuda_filtering.cu
-
-add_library(libcudasegmentation SHARED IMPORTED)
-set_target_properties( libcudasegmentation PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudasegmentation.so )
-
 link_directories(libcudacluster)
-
-link_directories(libcudasegmentation)
 
 add_library(cuda_clustering src/clustering/cuda_clustering.cpp)
 add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.cpp)
@@ -111,9 +104,6 @@ ament_target_dependencies(cuda_clustering
 )
 ament_target_dependencies(cuda_filtering
   rclcpp
-)
-target_link_libraries(cuda_segmentation
-  libcudasegmentation
 )
 ament_target_dependencies(cuda_segmentation
   rclcpp
