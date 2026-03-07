@@ -1,9 +1,7 @@
 #include "cuda_clustering/clustering/cuda_clustering.hpp"
-#include "cuda_clustering/clustering/cluster_filtering/dimension_filter.hpp"
 
 #include <iostream>
 #include <algorithm>
-#include <unordered_map>
 #include <vector>
 
 #include <thrust/sort.h>
@@ -13,25 +11,131 @@
 #include <thrust/sequence.h>
 #include <thrust/fill.h>
 #include <thrust/pair.h>
+#include <thrust/copy.h>
+#include <thrust/count.h>
+#include <thrust/scan.h>
+#include <thrust/extrema.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/discard_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/tuple.h>
 
 // ==========================================================================
-//  KERNEL 1:  Compute a voxel hash for every point
+//  KERNEL 1:  Bounding box reduction (GPU — no D→H copy needed)
 // ==========================================================================
+//  each block reduces its chunk to local min/max, then atomicMin/Max on
+//  global output.  We use __int_as_float / __float_as_int trick for
+//  atomics on floats.
+// ==========================================================================
+__device__ inline void atomicMinFloat(float* addr, float val) {
+    int* addr_as_int = (int*)addr;
+    int old = *addr_as_int, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(addr_as_int, assumed,
+                        __float_as_int(fminf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+}
+
+__device__ inline void atomicMaxFloat(float* addr, float val) {
+    int* addr_as_int = (int*)addr;
+    int old = *addr_as_int, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(addr_as_int, assumed,
+                        __float_as_int(fmaxf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+}
+
+// d_bbox layout: [minX, minY, minZ, maxX, maxY, maxZ]
+__global__ void boundingBoxKernel(
+    const float* __restrict__ points,
+    unsigned int nPoints,
+    float* __restrict__ d_bbox)
+{
+    __shared__ float s_min[3][256];  // blockDim.x capped to 256 for shared mem
+    __shared__ float s_max[3][256];
+
+    unsigned int tid = threadIdx.x;
+    unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    float lminX = 1e30f, lminY = 1e30f, lminZ = 1e30f;
+    float lmaxX = -1e30f, lmaxY = -1e30f, lmaxZ = -1e30f;
+
+    // grid-stride loop
+    for (unsigned int i = gid; i < nPoints; i += blockDim.x * gridDim.x) {
+        float x = points[i * 4 + 0];
+        float y = points[i * 4 + 1];
+        float z = points[i * 4 + 2];
+        lminX = fminf(lminX, x); lmaxX = fmaxf(lmaxX, x);
+        lminY = fminf(lminY, y); lmaxY = fmaxf(lmaxY, y);
+        lminZ = fminf(lminZ, z); lmaxZ = fmaxf(lmaxZ, z);
+    }
+
+    s_min[0][tid] = lminX; s_min[1][tid] = lminY; s_min[2][tid] = lminZ;
+    s_max[0][tid] = lmaxX; s_max[1][tid] = lmaxY; s_max[2][tid] = lmaxZ;
+    __syncthreads();
+
+    // shared memory reduction
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            s_min[0][tid] = fminf(s_min[0][tid], s_min[0][tid + stride]);
+            s_min[1][tid] = fminf(s_min[1][tid], s_min[1][tid + stride]);
+            s_min[2][tid] = fminf(s_min[2][tid], s_min[2][tid + stride]);
+            s_max[0][tid] = fmaxf(s_max[0][tid], s_max[0][tid + stride]);
+            s_max[1][tid] = fmaxf(s_max[1][tid], s_max[1][tid + stride]);
+            s_max[2][tid] = fmaxf(s_max[2][tid], s_max[2][tid + stride]);
+        }
+        __syncthreads();
+    }
+
+    // block winner atomically updates global bbox
+    if (tid == 0) {
+        atomicMinFloat(&d_bbox[0], s_min[0][0]);
+        atomicMinFloat(&d_bbox[1], s_min[1][0]);
+        atomicMinFloat(&d_bbox[2], s_min[2][0]);
+        atomicMaxFloat(&d_bbox[3], s_max[0][0]);
+        atomicMaxFloat(&d_bbox[4], s_max[1][0]);
+        atomicMaxFloat(&d_bbox[5], s_max[2][0]);
+    }
+}
+
+// ==========================================================================
+//  KERNEL 2:  Compute a voxel hash for every point
+// ==========================================================================
+//  reads bounding box from device pointer (output of boundingBoxKernel)
 //  Hash = ix + iy * GRID + iz * GRID * GRID
-//  where ix = floor((x - minX) / voxelX), etc.
-//  Points with fewer than countThreshold neighbours in the same voxel
-//  will be filtered later on the host side.
 // ==========================================================================
 __global__ void computeVoxelKeysKernel(
     const float* __restrict__ points,
     int* __restrict__ keys,
     unsigned int nPoints,
     float voxelX, float voxelY, float voxelZ,
-    float minX, float minY, float minZ,
-    int gridX, int gridY)
+    const float* __restrict__ d_bbox,  // [minX, minY, minZ, maxX, maxY, maxZ]
+    int* __restrict__ d_grid)          // output: [gridX, gridY] computed by thread 0
 {
+    // thread 0 computes grid dims from device-side bbox and writes to d_grid
+    __shared__ float s_bbox[6];
+    __shared__ int s_grid[2];
+
+    if (threadIdx.x < 6) s_bbox[threadIdx.x] = d_bbox[threadIdx.x];
+    __syncthreads();
+
+    float minX = s_bbox[0], minY = s_bbox[1], minZ = s_bbox[2];
+
+    if (threadIdx.x == 0) {
+        float maxX = s_bbox[3], maxY = s_bbox[4];
+        s_grid[0] = __float2int_ru((maxX - minX) / voxelX) + 1;
+        s_grid[1] = __float2int_ru((maxY - minY) / voxelY) + 1;
+        // also store to global so subsequent kernels can read gridX/gridY
+        d_grid[0] = s_grid[0];
+        d_grid[1] = s_grid[1];
+    }
+    __syncthreads();
+
+    int gridX = s_grid[0];
+    int gridY = s_grid[1];
+
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= nPoints) return;
 
@@ -73,20 +177,21 @@ __device__ void uf_union(int* parent, int a, int b)
 }
 
 // ==========================================================================
-//  KERNEL 2:  Union-find on voxel grid — 26-connectivity
+//  KERNEL 3:  Union-find on voxel grid — 26-connectivity
 // ==========================================================================
-//  Each thread handles one occupied voxel and merges it with all occupied
-//  neighbours.  The voxel→linear-id mapping is passed via a hash table
-//  stored in global memory (sorted arrays for binary search).
+//  reads gridX/gridY from device pointer (computed by computeVoxelKeysKernel)
 // ==========================================================================
 __global__ void unionFindKernel(
     const int* __restrict__ uniqueKeys,   // sorted unique voxel hashes
     int  numVoxels,
     int* __restrict__ parent,
-    int gridX, int gridY)
+    const int* __restrict__ d_grid)       // [gridX, gridY]
 {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= (unsigned)numVoxels) return;
+
+    int gridX = d_grid[0];
+    int gridY = d_grid[1];
 
     int myKey = uniqueKeys[tid];
     int iz = myKey / (gridX * gridY);
@@ -125,13 +230,143 @@ __global__ void unionFindKernel(
 }
 
 // ==========================================================================
-//  KERNEL 3:  Flatten parent array (path compress to root)
+//  KERNEL 4:  Flatten parent array (path compress to root)
 // ==========================================================================
 __global__ void flattenParentKernel(int* parent, int n)
 {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= (unsigned)n) return;
     parent[tid] = uf_find(parent, tid);
+}
+
+// ==========================================================================
+//  KERNEL 5:  Assign cluster label to every point via sorted-key lookup
+// ==========================================================================
+//  each point already has a voxel key in d_voxelKeys.
+//  we binary-search in the *filtered* unique keys to find its voxel index,
+//  then read the flattened parent (= cluster root label).
+//  Points whose voxel was filtered out get label -1.
+// ==========================================================================
+__global__ void assignClusterLabelsKernel(
+    const int* __restrict__ pointKeys,      // voxel key per original point
+    unsigned int nPoints,
+    const int* __restrict__ filteredKeys,    // sorted filtered unique voxel hashes
+    int numFiltered,
+    const int* __restrict__ parent,          // flattened parent array (indexed by filtered-voxel-idx)
+    int* __restrict__ pointLabels)           // output: cluster root label per point (-1 if filtered)
+{
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= nPoints) return;
+
+    int key = pointKeys[tid];
+
+    // binary search in filteredKeys
+    int lo = 0, hi = numFiltered - 1;
+    int found = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int mk = filteredKeys[mid];
+        if (mk == key) { found = mid; break; }
+        else if (mk < key) lo = mid + 1;
+        else               hi = mid - 1;
+    }
+
+    pointLabels[tid] = (found >= 0) ? parent[found] : -1;
+}
+
+// ==========================================================================
+//  KERNEL 6:  Per-cluster bounding box via atomics
+// ==========================================================================
+//  each point contributes to its cluster's bounding box.
+//  d_clusterBBox layout per cluster: [minX, minY, minZ, maxX, maxY, maxZ]
+//  d_clusterSizes: atomically counted per cluster
+// ==========================================================================
+__global__ void clusterBBoxKernel(
+    const float* __restrict__ points,
+    const int* __restrict__ pointLabels,    // cluster root label per point
+    const int* __restrict__ labelMap,        // root_label → compact cluster id
+    int numLabels,                           // number of unique labels (for binary search in labelMap)
+    const int* __restrict__ labelKeys,       // sorted unique root labels
+    unsigned int nPoints,
+    float* __restrict__ d_clusterBBox,       // [6 * numClusters]
+    unsigned int* __restrict__ d_clusterSizes)
+{
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= nPoints) return;
+
+    int label = pointLabels[tid];
+    if (label < 0) return;
+
+    // binary search for label in labelKeys to get compact cluster id
+    int lo = 0, hi = numLabels - 1;
+    int cid = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int mk = labelKeys[mid];
+        if (mk == label) { cid = labelMap[mid]; break; }
+        else if (mk < label) lo = mid + 1;
+        else                  hi = mid - 1;
+    }
+    if (cid < 0) return;
+
+    float x = points[tid * 4 + 0];
+    float y = points[tid * 4 + 1];
+    float z = points[tid * 4 + 2];
+
+    atomicMinFloat(&d_clusterBBox[cid * 6 + 0], x);
+    atomicMinFloat(&d_clusterBBox[cid * 6 + 1], y);
+    atomicMinFloat(&d_clusterBBox[cid * 6 + 2], z);
+    atomicMaxFloat(&d_clusterBBox[cid * 6 + 3], x);
+    atomicMaxFloat(&d_clusterBBox[cid * 6 + 4], y);
+    atomicMaxFloat(&d_clusterBBox[cid * 6 + 5], z);
+
+    atomicAdd(&d_clusterSizes[cid], 1u);
+}
+
+// ==========================================================================
+//  KERNEL 7:  Dimension filter — check each cluster's bbox on GPU
+// ==========================================================================
+//  produces a compacted list of cone center points (x,y,z) for valid clusters.
+// ==========================================================================
+__global__ void dimensionFilterKernel(
+    const float* __restrict__ d_clusterBBox,   // [6 * numClusters]
+    const unsigned int* __restrict__ d_clusterSizes,
+    int numClusters,
+    unsigned int minClusterSize,
+    unsigned int maxClusterSize,
+    float filterMinX, float filterMinY, float filterMinZ,
+    float filterMaxX, float filterMaxY, float filterMaxZ,
+    float maxHeight,
+    float* __restrict__ d_conePoints,          // output: [3 * numClusters] max
+    unsigned int* __restrict__ d_numCones)
+{
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= (unsigned)numClusters) return;
+
+    unsigned int sz = d_clusterSizes[tid];
+    if (sz < minClusterSize || sz > maxClusterSize) return;
+
+    float mnX = d_clusterBBox[tid * 6 + 0];
+    float mnY = d_clusterBBox[tid * 6 + 1];
+    float mnZ = d_clusterBBox[tid * 6 + 2];
+    float mxX = d_clusterBBox[tid * 6 + 3];
+    float mxY = d_clusterBBox[tid * 6 + 4];
+    float mxZ = d_clusterBBox[tid * 6 + 5];
+
+    float dx = mxX - mnX;
+    float dy = mxY - mnY;
+    float dz = mxZ - mnZ;
+
+    // isCone check
+    if (mnZ < maxHeight &&
+        dx < filterMaxX && dy < filterMaxY && dz < filterMaxZ &&
+        dx > filterMinX && dy > filterMinY && dz > filterMinZ)
+    {
+        unsigned int idx = atomicAdd(d_numCones, 1u);
+        d_conePoints[idx * 3 + 0] = (mxX + mnX) * 0.5f;
+        d_conePoints[idx * 3 + 1] = (mxY + mnY) * 0.5f;
+        d_conePoints[idx * 3 + 2] = (mxZ + mnZ) * 0.5f;
+    }
 }
 
 // ==========================================================================
@@ -146,14 +381,18 @@ CudaClustering::CudaClustering(clustering_parameters& param)
     ecp.voxelZ          = param.clustering.voxelZ;
     ecp.countThreshold  = param.clustering.countThreshold;
 
-    filter = new DimensionFilter(param.filtering);
+    filterParams = param.filtering;
     cudaStreamCreate(&stream);
+
+    // pre-allocate small fixed-size device buffers
+    d_bbox.resize(6);       // [minX, minY, minZ, maxX, maxY, maxZ]
+    d_grid.resize(2);       // [gridX, gridY]
+    d_numCones.resize(1);
 }
 
 CudaClustering::~CudaClustering()
 {
     if (stream != NULL) cudaStreamDestroy(stream);
-    delete filter;
 }
 
 void CudaClustering::getInfo()
@@ -177,20 +416,24 @@ void CudaClustering::getInfo()
 }
 
 // --------------------------------------------------------------------------
-//  extractClusters — full custom CUDA pipeline
+//  extractClusters — full GPU pipeline (single D→H sync at the end)
 // --------------------------------------------------------------------------
-//  1. Compute voxel hash per point                (GPU)
-//  2. Sort points by voxel hash                   (GPU — thrust)
-//  3. Reduce to unique voxels + per-voxel counts  (GPU — thrust)
-//  4. Filter voxels by countThreshold             (CPU — small)
-//  5. Union-find 26-connectivity                  (GPU)
-//  6. Flatten labels, gather clusters             (CPU — small)
-//  7. Per-cluster dimension filter → cones        (CPU)
+//  1. Bounding box                              (GPU kernel)
+//  2. Compute voxel hash per point              (GPU kernel, reads bbox from device)
+//  3. Sort points by voxel hash                 (GPU — thrust)
+//  4. Reduce to unique voxels + per-voxel counts(GPU — thrust)
+//  5. Filter voxels by countThreshold           (GPU — thrust::copy_if)
+//  6. Union-find 26-connectivity                (GPU kernel)
+//  7. Flatten parent labels                     (GPU kernel)
+//  8. Assign cluster label per point            (GPU kernel)
+//  9. Per-cluster bounding box via atomics       (GPU kernel)
+//  10. Dimension filter → cone points           (GPU kernel)
+//  11. Copy cone points D→H (tiny)             (single sync)
 // --------------------------------------------------------------------------
 void CudaClustering::extractClusters(
     float* input,             // device pointer  (x,y,z,i)*N
     unsigned int inputSize,
-    float* outputEC,          // device pointer  (pre-allocated, same size)
+    float* /*outputEC*/,      // device pointer  (unused in this pipeline)
     std::shared_ptr<visualization_msgs::msg::Marker> cones)
 {
     std::cout << "\n------------ CUDA Clustering (Custom) ----------------" << std::endl;
@@ -203,39 +446,23 @@ void CudaClustering::extractClusters(
     }
 
     const int threads = 1024;
+    const int bbThreads = 256;  // bounded for shared memory in bbox kernel
+    int blocks;
 
     // ------------------------------------------------------------------
-    // Find bounding box on CPU (tiny copy — 6 floats via thrust)
+    // 1. Bounding box on GPU (no D→H copy)
     // ------------------------------------------------------------------
-    // We wrap the device pointer in a thrust device_ptr so we can use
-    // thrust algorithms without extra copies.
-    thrust::device_ptr<float> dp(input);
+    // init bbox: min channels to +inf, max channels to -inf
+    float bbox_init[6] = {1e30f, 1e30f, 1e30f, -1e30f, -1e30f, -1e30f};
+    cudaMemcpyAsync(thrust::raw_pointer_cast(d_bbox.data()), bbox_init,
+                    6 * sizeof(float), cudaMemcpyHostToDevice, stream);
 
-    // Strided min/max — extract X/Y/Z channels
-    // For simplicity and reliability we copy the points to host once.
-    // The copy is overlapped with the rest of the pipeline anyway.
-    std::vector<float> h_points(inputSize * 4);
-    cudaMemcpyAsync(h_points.data(), input, inputSize * 4 * sizeof(float),
-                    cudaMemcpyDeviceToHost, stream);
-    cudaStreamSynchronize(stream);
-
-    float minX =  1e30f, minY =  1e30f, minZ =  1e30f;
-    float maxX = -1e30f, maxY = -1e30f, maxZ = -1e30f;
-    for (unsigned int i = 0; i < inputSize; ++i) {
-        float x = h_points[i*4+0], y = h_points[i*4+1], z = h_points[i*4+2];
-        if (x < minX) minX = x;  if (x > maxX) maxX = x;
-        if (y < minY) minY = y;  if (y > maxY) maxY = y;
-        if (z < minZ) minZ = z;  if (z > maxZ) maxZ = z;
-    }
-
-    // Grid dimensions
-    int gridX = (int)ceilf((maxX - minX) / ecp.voxelX) + 1;
-    int gridY = (int)ceilf((maxY - minY) / ecp.voxelY) + 1;
-    int gridZ = (int)ceilf((maxZ - minZ) / ecp.voxelZ) + 1;
-    (void)gridZ; // used implicitly in hash
+    blocks = std::min((int)((inputSize + bbThreads - 1) / bbThreads), 256);
+    boundingBoxKernel<<<blocks, bbThreads, 0, stream>>>(
+        input, inputSize, thrust::raw_pointer_cast(d_bbox.data()));
 
     // ------------------------------------------------------------------
-    // Compute voxel hash per point (GPU)
+    // 2. Compute voxel hash per point (reads bbox + writes gridX/gridY from/to device)
     // ------------------------------------------------------------------
     if (d_voxelKeys.capacity() < inputSize) {
         d_voxelKeys.reserve(inputSize);
@@ -246,14 +473,15 @@ void CudaClustering::extractClusters(
     d_sortedKeys.resize(inputSize);
     d_sortedIndices.resize(inputSize);
 
-    int blocks = (inputSize + threads - 1) / threads;
+    blocks = (inputSize + threads - 1) / threads;
     computeVoxelKeysKernel<<<blocks, threads, 0, stream>>>(
         input, thrust::raw_pointer_cast(d_voxelKeys.data()), inputSize,
         ecp.voxelX, ecp.voxelY, ecp.voxelZ,
-        minX, minY, minZ, gridX, gridY);
+        thrust::raw_pointer_cast(d_bbox.data()),
+        thrust::raw_pointer_cast(d_grid.data()));
 
     // ------------------------------------------------------------------
-    // Sort by voxel key (GPU)
+    // 3. Sort by voxel key (GPU)
     // ------------------------------------------------------------------
     d_sortedKeys = d_voxelKeys;
     thrust::sequence(thrust::cuda::par.on(stream),
@@ -263,9 +491,8 @@ void CudaClustering::extractClusters(
                         d_sortedIndices.begin());
 
     // ------------------------------------------------------------------
-    // Reduce to unique voxels + counts (GPU → host)
+    // 4. Reduce to unique voxels + counts (GPU)
     // ------------------------------------------------------------------
-    // Upper-bound on unique voxels = inputSize
     if (d_uniqueKeys.capacity() < inputSize)  d_uniqueKeys.reserve(inputSize);
     if (d_voxelCounts.capacity() < inputSize) d_voxelCounts.reserve(inputSize);
     d_uniqueKeys.resize(inputSize);
@@ -282,33 +509,32 @@ void CudaClustering::extractClusters(
     d_uniqueKeys.resize(numVoxels);
     d_voxelCounts.resize(numVoxels);
 
-    // Copy to host for filtering by countThreshold
-    thrust::host_vector<int>          h_uniqueKeys  = d_uniqueKeys;
-    thrust::host_vector<unsigned int> h_voxelCounts = d_voxelCounts;
+    // ------------------------------------------------------------------
+    // 5. Filter voxels by countThreshold (GPU — thrust::copy_if)
+    // ------------------------------------------------------------------
+    if ((int)d_filteredKeys.capacity() < numVoxels)
+        d_filteredKeys.reserve(numVoxels);
+    d_filteredKeys.resize(numVoxels);
 
-    // Filter out voxels below countThreshold — build mapping
-    std::vector<int>          filteredKeys;
-    std::vector<unsigned int> filteredCounts;
-    filteredKeys.reserve(numVoxels);
-    filteredCounts.reserve(numVoxels);
-    for (int i = 0; i < numVoxels; ++i) {
-        if ((int)h_voxelCounts[i] >= ecp.countThreshold) {
-            filteredKeys.push_back(h_uniqueKeys[i]);
-            filteredCounts.push_back(h_voxelCounts[i]);
-        }
-    }
-    int numFiltered = (int)filteredKeys.size();
+    int countThresh = ecp.countThreshold;
+    auto filt_end = thrust::copy_if(
+        thrust::cuda::par.on(stream),
+        d_uniqueKeys.begin(), d_uniqueKeys.end(),
+        d_voxelCounts.begin(),  // stencil
+        d_filteredKeys.begin(),
+        [countThresh] __device__ (unsigned int c) { return (int)c >= countThresh; });
+
+    int numFiltered = (int)(filt_end - d_filteredKeys.begin());
+    d_filteredKeys.resize(numFiltered);
+
     if (numFiltered == 0) {
         RCLCPP_WARN(rclcpp::get_logger("clustering_node"),
                      "No voxels survived countThreshold filter");
         return;
     }
 
-    // Upload filtered keys for union-find
-    d_uniqueKeys.assign(filteredKeys.begin(), filteredKeys.end());
-
     // ------------------------------------------------------------------
-    // Union-find on 26-connected voxel grid (GPU)
+    // 6. Union-find on 26-connected voxel grid (GPU)
     // ------------------------------------------------------------------
     if ((int)d_parent.capacity() < numFiltered) d_parent.reserve(numFiltered);
     d_parent.resize(numFiltered);
@@ -317,132 +543,154 @@ void CudaClustering::extractClusters(
 
     blocks = (numFiltered + threads - 1) / threads;
     unionFindKernel<<<blocks, threads, 0, stream>>>(
-        thrust::raw_pointer_cast(d_uniqueKeys.data()),
+        thrust::raw_pointer_cast(d_filteredKeys.data()),
         numFiltered,
         thrust::raw_pointer_cast(d_parent.data()),
-        gridX, gridY);
+        thrust::raw_pointer_cast(d_grid.data()));
 
+    // ------------------------------------------------------------------
+    // 7. Flatten parent array (GPU)
+    // ------------------------------------------------------------------
     flattenParentKernel<<<blocks, threads, 0, stream>>>(
         thrust::raw_pointer_cast(d_parent.data()), numFiltered);
 
-    // Copy labels to host
-    thrust::host_vector<int> h_parent = d_parent;
+    // ------------------------------------------------------------------
+    // 8. Assign cluster label per point (GPU)
+    // ------------------------------------------------------------------
+    if (d_pointLabels.capacity() < inputSize) d_pointLabels.reserve(inputSize);
+    d_pointLabels.resize(inputSize);
+
+    blocks = (inputSize + threads - 1) / threads;
+    assignClusterLabelsKernel<<<blocks, threads, 0, stream>>>(
+        thrust::raw_pointer_cast(d_voxelKeys.data()),
+        inputSize,
+        thrust::raw_pointer_cast(d_filteredKeys.data()),
+        numFiltered,
+        thrust::raw_pointer_cast(d_parent.data()),
+        thrust::raw_pointer_cast(d_pointLabels.data()));
 
     // ------------------------------------------------------------------
-    // Group voxels by cluster label (CPU)
+    // 9. Build compact cluster IDs + per-cluster bbox (GPU)
     // ------------------------------------------------------------------
-    // Map: root label → cluster id
-    std::unordered_map<int, int> rootToCluster;
-    int nextCluster = 0;
-    for (int i = 0; i < numFiltered; ++i) {
-        int root = h_parent[i];
-        if (rootToCluster.find(root) == rootToCluster.end()) {
-            rootToCluster[root] = nextCluster++;
-        }
-    }
+    // get unique root labels from parent array → compact cluster IDs
+    if ((int)d_uniqueLabels.capacity() < numFiltered)
+        d_uniqueLabels.reserve(numFiltered);
+    d_uniqueLabels.resize(numFiltered);
 
-    // Build per-cluster point lists using the sorted key arrays on host
-    // We need sorted keys and sorted indices on host
-    thrust::host_vector<int>          h_sortedKeys    = d_sortedKeys;
-    thrust::host_vector<unsigned int> h_sortedIndices = d_sortedIndices;
+    // copy parent, sort, unique to get distinct root labels
+    thrust::copy(thrust::cuda::par.on(stream),
+                 d_parent.begin(), d_parent.end(),
+                 d_uniqueLabels.begin());
+    thrust::sort(thrust::cuda::par.on(stream),
+                 d_uniqueLabels.begin(), d_uniqueLabels.end());
+    auto ul_end = thrust::unique(thrust::cuda::par.on(stream),
+                                  d_uniqueLabels.begin(), d_uniqueLabels.end());
+    int numClusters = (int)(ul_end - d_uniqueLabels.begin());
+    d_uniqueLabels.resize(numClusters);
 
-    // Build a lookup: filteredKey → filtered-index (for parent lookup)
-    std::unordered_map<int, int> keyToFilteredIdx;
-    for (int i = 0; i < numFiltered; ++i) {
-        keyToFilteredIdx[filteredKeys[i]] = i;
-    }
-
-    // Collect points per cluster
-    // clusterPoints[clusterID] = list of original point indices
-    std::vector<std::vector<unsigned int>> clusterPoints(nextCluster);
-    for (unsigned int i = 0; i < inputSize; ++i) {
-        int key = h_sortedKeys[i];
-        auto it = keyToFilteredIdx.find(key);
-        if (it == keyToFilteredIdx.end()) continue;  // voxel was filtered out
-        int filtIdx = it->second;
-        int root    = h_parent[filtIdx];
-        int cid     = rootToCluster[root];
-        clusterPoints[cid].push_back(h_sortedIndices[i]);
-    }
-
-    // ------------------------------------------------------------------
-    // Filter clusters by size, write output, run dimension filter
-    // ------------------------------------------------------------------
-    // Write clusters sequentially into outputEC on device.
-    // Build indexEC compatible with the old format:
-    //   indexEC[0] = numClusters
-    //   indexEC[i] = number of points in cluster i  (1-based)
-
-    auto t2 = std::chrono::steady_clock::now();
-
-    unsigned int totalOut = 0;
-    std::vector<unsigned int> validClusterSizes;
-    std::vector<unsigned int> validClusterOffsets;
-
-    for (int c = 0; c < nextCluster; ++c) {
-        unsigned int sz = (unsigned int)clusterPoints[c].size();
-        if (sz < ecp.minClusterSize || sz > ecp.maxClusterSize) continue;
-        validClusterOffsets.push_back(totalOut);
-        validClusterSizes.push_back(sz);
-        totalOut += sz;
-    }
-
-    if (totalOut == 0) {
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"),
-                     "No clusters survived size filter [%u, %u]",
-                     ecp.minClusterSize, ecp.maxClusterSize);
+    if (numClusters == 0) {
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "No clusters found");
         return;
     }
 
-    // Build a flat host buffer with the clustered points
-    std::vector<float> h_output(totalOut * 4);
-    unsigned int writeIdx = 0;
-    unsigned int finalCluster = 0;
+    // build label → compact ID map (just sequential 0..numClusters-1)
+    if ((int)d_labelMap.capacity() < numClusters) d_labelMap.reserve(numClusters);
+    d_labelMap.resize(numClusters);
+    thrust::sequence(thrust::cuda::par.on(stream),
+                     d_labelMap.begin(), d_labelMap.end());
 
-    for (int c = 0; c < nextCluster; ++c) {
-        unsigned int sz = (unsigned int)clusterPoints[c].size();
-        if (sz < ecp.minClusterSize || sz > ecp.maxClusterSize) continue;
-        for (unsigned int pidx : clusterPoints[c]) {
-            h_output[writeIdx * 4 + 0] = h_points[pidx * 4 + 0];
-            h_output[writeIdx * 4 + 1] = h_points[pidx * 4 + 1];
-            h_output[writeIdx * 4 + 2] = h_points[pidx * 4 + 2];
-            h_output[writeIdx * 4 + 3] = h_points[pidx * 4 + 3];
-            writeIdx++;
-        }
-        finalCluster++;
+    // allocate and init per-cluster bbox + sizes
+    if ((int)d_clusterBBox.capacity() < numClusters * 6)
+        d_clusterBBox.reserve(numClusters * 6);
+    d_clusterBBox.resize(numClusters * 6);
+
+    if ((int)d_clusterSizes.capacity() < numClusters)
+        d_clusterSizes.reserve(numClusters);
+    d_clusterSizes.resize(numClusters);
+
+    // init bbox: min = +inf, max = -inf ; sizes = 0
+    thrust::fill(thrust::cuda::par.on(stream),
+                 d_clusterSizes.begin(), d_clusterSizes.end(), 0u);
+    {
+        // interleave init: [+inf, +inf, +inf, -inf, -inf, -inf] per cluster
+        float* raw_bbox = thrust::raw_pointer_cast(d_clusterBBox.data());
+        thrust::for_each(thrust::cuda::par.on(stream),
+            thrust::make_counting_iterator(0),
+            thrust::make_counting_iterator(numClusters * 6),
+            [raw_bbox] __device__ (int i) {
+                int channel = i % 6;
+                raw_bbox[i] = (channel < 3) ? 1e30f : -1e30f;
+            });
     }
 
-    // Copy clustered points to device output
-    cudaMemcpyAsync(outputEC, h_output.data(), totalOut * 4 * sizeof(float),
-                    cudaMemcpyHostToDevice, stream);
+    // per-cluster bbox accumulation
+    blocks = (inputSize + threads - 1) / threads;
+    clusterBBoxKernel<<<blocks, threads, 0, stream>>>(
+        input,
+        thrust::raw_pointer_cast(d_pointLabels.data()),
+        thrust::raw_pointer_cast(d_labelMap.data()),
+        numClusters,
+        thrust::raw_pointer_cast(d_uniqueLabels.data()),
+        inputSize,
+        thrust::raw_pointer_cast(d_clusterBBox.data()),
+        thrust::raw_pointer_cast(d_clusterSizes.data()));
+
+    // ------------------------------------------------------------------
+    // 10. Dimension filter on GPU → cone points
+    // ------------------------------------------------------------------
+    if ((int)d_conePoints.capacity() < numClusters * 3)
+        d_conePoints.reserve(numClusters * 3);
+    d_conePoints.resize(numClusters * 3);
+    cudaMemsetAsync(thrust::raw_pointer_cast(d_numCones.data()), 0,
+                    sizeof(unsigned int), stream);
+
+    blocks = (numClusters + threads - 1) / threads;
+    if (blocks == 0) blocks = 1;
+    dimensionFilterKernel<<<blocks, threads, 0, stream>>>(
+        thrust::raw_pointer_cast(d_clusterBBox.data()),
+        thrust::raw_pointer_cast(d_clusterSizes.data()),
+        numClusters,
+        ecp.minClusterSize, ecp.maxClusterSize,
+        filterParams.clusterMinX, filterParams.clusterMinY, filterParams.clusterMinZ,
+        filterParams.clusterMaxX, filterParams.clusterMaxY, filterParams.clusterMaxZ,
+        filterParams.maxHeight,
+        thrust::raw_pointer_cast(d_conePoints.data()),
+        thrust::raw_pointer_cast(d_numCones.data()));
+
+    // ------------------------------------------------------------------
+    // 11. Single D→H sync: copy cone points (tiny — typically < 100 cones)
+    // ------------------------------------------------------------------
+    unsigned int numCones = 0;
+    cudaMemcpyAsync(&numCones, thrust::raw_pointer_cast(d_numCones.data()),
+                    sizeof(unsigned int), cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
 
-    // ------------------------------------------------------------------
-    // Per-cluster dimension filter → cones (CPU, uses host data)
-    // ------------------------------------------------------------------
-    for (unsigned int i = 0; i < finalCluster; ++i) {
-        unsigned int offset = validClusterOffsets[i];
-        unsigned int sz     = validClusterSizes[i];
+    if (numCones > 0) {
+        std::vector<float> h_cones(numCones * 3);
+        cudaMemcpyAsync(h_cones.data(), thrust::raw_pointer_cast(d_conePoints.data()),
+                        numCones * 3 * sizeof(float), cudaMemcpyDeviceToHost, stream);
+        cudaStreamSynchronize(stream);
 
-        std::optional<geometry_msgs::msg::Point> pnt_opt =
-            filter->analiseCluster(&h_output[offset * 4], sz);
-
-        if (pnt_opt.has_value()) {
-            cones->points.push_back(pnt_opt.value());
+        for (unsigned int i = 0; i < numCones; ++i) {
+            geometry_msgs::msg::Point pnt;
+            pnt.x = h_cones[i * 3 + 0];
+            pnt.y = h_cones[i * 3 + 1];
+            pnt.z = h_cones[i * 3 + 2];
+            cones->points.push_back(pnt);
         }
     }
 
-    auto t3 = std::chrono::steady_clock::now();
-    auto gpu_ms   = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
-    auto total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t1).count();
+    auto t2 = std::chrono::steady_clock::now();
+    auto total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
     totalTime += total_ms;
     iterations++;
 
-    std::cout << "From " << inputSize << " points to " 
-              << numFiltered << " voxels to " 
-              << finalCluster << " clusters to " 
-              << totalOut << " output points\n"
-              << "Clustering time: " << gpu_ms << " ms (GPU), " << total_ms << " ms (total)\n"
-              << "Avarage time per iteration: " << totalTime / iterations << " ms after " << iterations << " iterations\n"
+    std::cout << "From " << inputSize << " points → "
+              << numVoxels << " voxels → "
+              << numFiltered << " filtered → "
+              << numClusters << " clusters → "
+              << numCones << " cones\n"
+              << "Clustering time: " << total_ms << " ms\n"
+              << "Average time per iteration: " << totalTime / iterations << " ms after " << iterations << " iterations\n"
               << "-------------------------------------------------------" << std::endl;
 }

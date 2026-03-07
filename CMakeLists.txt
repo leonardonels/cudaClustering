@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
+add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra)
@@ -88,9 +89,6 @@ ament_target_dependencies(cluster_filtering
   geometry_msgs
 )
 
-target_link_libraries(cuda_clustering
-  cluster_filtering
-)
 ament_target_dependencies(cuda_clustering
   rclcpp
   visualization_msgs
