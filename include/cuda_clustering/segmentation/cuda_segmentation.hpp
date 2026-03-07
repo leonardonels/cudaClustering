@@ -4,8 +4,6 @@
 
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <vector>
 
 typedef enum
 {
@@ -74,24 +72,20 @@ class CudaSegmentation : public Isegmentation
 {
 private:
     segParam_t segP;
-    bool skip = false;
 
     double totalTime = 0.0;
     unsigned int iterations = 0;
 
     // -------------------------------------------------------------------------
-    // Device vectors for GPU data and std::vector for coefficients
+    // Device vectors for GPU data
     // -------------------------------------------------------------------------
     thrust::device_vector<int> d_index;
-    thrust::host_vector<float> h_modelCoefficients;
     thrust::device_vector<float> d_input;
-    thrust::device_vector<float> d_output;
 
     // RANSAC temporary buffers
     thrust::device_vector<int> d_counts;
     thrust::device_vector<float4> d_planes;
-    thrust::host_vector<int> h_counts;
-    thrust::host_vector<float4> h_planes;
+    thrust::device_vector<float4> d_bestPlane;  // single-element: best plane model
 
     // -------------------------------------------------------------------------
     // a single device integer to count how many points survived filtering

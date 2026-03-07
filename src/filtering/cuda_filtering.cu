@@ -77,7 +77,7 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
 
     // launch the single-pass filter kernel
     float* raw_temp = thrust::raw_pointer_cast(d_temp.data());
-    int threads = 256;
+    int threads = 1024;
     int blocks  = (inputSize + threads - 1) / threads;
 
     passthroughFilterKernel<<<blocks, threads, 0, stream>>>(

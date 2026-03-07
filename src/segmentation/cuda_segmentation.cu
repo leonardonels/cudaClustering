@@ -5,6 +5,7 @@
 #include <vector>
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
+#include <thrust/extrema.h>
 
 // --------------------
 // COMPACTION KERNEL
@@ -79,16 +80,6 @@ __global__ void ransacPlaneKernel(
     float p2[3] = {points[idx2*4], points[idx2*4+1], points[idx2*4+2]};
     float p3[3] = {points[idx3*4], points[idx3*4+1], points[idx3*4+2]};
 
-    // filter out seed points that are too far away.
-    // this reduces the chance of fitting to distant noise.
-    if ((p1[0]*p1[0] + p1[1]*p1[1]) > 2500.0f ||
-        (p2[0]*p2[0] + p2[1]*p2[1]) > 2500.0f ||
-        (p3[0]*p3[0] + p3[1]*p3[1]) > 2500.0f) {
-            
-        if (threadIdx.x == 0) plane_inliers_counts[iter] = -1;
-        return;
-    }
-
     // compute plane model (ax + by + cz + d = 0)
     float v1[3] = {p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]};
     float v2[3] = {p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]};
@@ -130,9 +121,9 @@ __global__ void ransacPlaneKernel(
     }
 
     // block reduction
-    __shared__ int s_counts[256]; // Block dim must be 256
+    __shared__ int s_counts[1024]; // Block dim must be 1024
     // initialize shared mem
-    if (threadIdx.x < 256) s_counts[threadIdx.x] = 0;
+    if (threadIdx.x < 1024) s_counts[threadIdx.x] = 0;
     __syncthreads(); // Only needed if we rely on init, but we overwrite
 
     s_counts[threadIdx.x] = local_count;
@@ -168,7 +159,26 @@ __global__ void markInliersKernel(
     float z = points[i*4+2];
     float dist = fabsf(best_plane.x * x + best_plane.y * y + best_plane.z * z + best_plane.w);
     
-    // Mark as inlier (1) or outlier (0)
+    // mark as inlier (1) or outlier (0)
+    indices[i] = (dist <= threshold) ? 1 : 0;
+}
+
+// variant that loads best_plane from a device pointer (avoids D→H sync before launch)
+__global__ void markInliersFromDeviceKernel(
+    const float* __restrict__ points,
+    int num_points,
+    int* __restrict__ indices,
+    const float4* __restrict__ d_best_plane,
+    float threshold
+) {
+    float4 bp = *d_best_plane;  // all threads in the grid load the same value (L2 cached)
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_points) return;
+
+    float x = points[i*4];
+    float y = points[i*4+1];
+    float z = points[i*4+2];
+    float dist = fabsf(bp.x * x + bp.y * y + bp.z * z + bp.w);
     indices[i] = (dist <= threshold) ? 1 : 0;
 }
 
@@ -181,7 +191,6 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
   segP.maxIterations = params.maxIterations;
   segP.probability = params.probability;
 
-  h_modelCoefficients.resize(4);
   d_out_count.resize(1);
 }
 
@@ -211,17 +220,14 @@ void CudaSegmentation::segment(
   if (d_index.capacity() < nCount) {
       d_index.reserve(nCount);
       d_input.reserve(nCount * 4);
-      d_output.reserve(nCount * 4);
   }
   d_index.resize(nCount);
   d_input.resize(nCount * 4);
-  d_output.resize(nCount * 4);
 
   int* raw_index = thrust::raw_pointer_cast(d_index.data());
   float* raw_input = thrust::raw_pointer_cast(d_input.data());
-  float* raw_output = thrust::raw_pointer_cast(d_output.data());
 
-  // Copy input within GPU (inputData is already a device pointer from the controller)
+  // copy input within GPU (inputData is already a device pointer from the controller)
   cudaMemcpyAsync(raw_input, inputData, nCount * 4 * sizeof(float), cudaMemcpyDeviceToDevice, stream);
 
   // ----------------------------------------------------
@@ -233,121 +239,72 @@ void CudaSegmentation::segment(
   if (max_iter <= 0) max_iter = 100;
   if (max_iter > 1024) max_iter = 1024; // Limit for memory
 
-  // Temp buffers for RANSAC results
+  // temp buffers for RANSAC results
   if (int(d_counts.size()) < max_iter) d_counts.resize(max_iter);
   if (int(d_planes.size()) < max_iter) d_planes.resize(max_iter);
   
   int* raw_counts = thrust::raw_pointer_cast(d_counts.data());
   float4* raw_planes = thrust::raw_pointer_cast(d_planes.data());
 
-  // Init counts to -1
+  // init counts to -1
   thrust::fill(thrust::cuda::par.on(stream), d_counts.begin(), d_counts.begin() + max_iter, -1);
 
-  // Launch RANSAC
-  // Each block is 1 iteration, using 256 threads for reduction
+  // launch RANSAC
+  // each block is 1 iteration, using 1024 threads for inlier counting + reduction
   auto now = std::chrono::high_resolution_clock::now();
   unsigned int seed = (unsigned int)now.time_since_epoch().count();
-  ransacPlaneKernel<<<max_iter, 256, 0, stream>>>(
+  ransacPlaneKernel<<<max_iter, 1024, 0, stream>>>(
       raw_input, nCount, (float)segP.distanceThreshold, max_iter, raw_counts, raw_planes, seed
   );
-  
-  // Copy RANSAC results to host to find best
-  // Doing this small copy is simpler than writing a device reduction kernel for max_element with struct
-  
-  if (int(h_counts.size()) < max_iter) h_counts.resize(max_iter);
-  if (int(h_planes.size()) < max_iter) h_planes.resize(max_iter);
-  
-  cudaMemcpyAsync(thrust::raw_pointer_cast(h_counts.data()), raw_counts, max_iter * sizeof(int), cudaMemcpyDeviceToHost, stream);
-  cudaMemcpyAsync(thrust::raw_pointer_cast(h_planes.data()), raw_planes, max_iter * sizeof(float4), cudaMemcpyDeviceToHost, stream);
-  cudaStreamSynchronize(stream); // Sync to get counts
 
-  // Find best on CPU
-  int best_idx = -1;
-  int max_inliers = -1;
-  
-  for (int i = 0; i < max_iter; i++) {
-      if (h_counts[i] > max_inliers) {
-          max_inliers = h_counts[i];
-          best_idx = i;
-      }
-  }
+  // find best RANSAC iteration entirely on GPU using thrust::max_element
+  auto best_it = thrust::max_element(thrust::cuda::par.on(stream),
+                                     d_counts.begin(), d_counts.begin() + max_iter);
+  int best_idx_device = (int)(best_it - d_counts.begin());
 
-  if (best_idx != -1 && max_inliers > 0) {
-      float4 best_plane = h_planes[best_idx];
-      h_modelCoefficients[0] = best_plane.x;
-      h_modelCoefficients[1] = best_plane.y;
-      h_modelCoefficients[2] = best_plane.z;
-      h_modelCoefficients[3] = best_plane.w;
-      
-      // Compute points indices based on best model
-      int threads = 256;
+  // launch markInliers + compaction unconditionally on GPU (no host sync needed yet).
+  // we read the best plane directly from device memory via pointer offset.
+  // markInliersKernel reads best_plane by value — we use a small D→D copy into
+  // a single-element device buffer so we can pass it to the kernel.
+
+  // copy the winning plane model into a known device location
+  if (d_bestPlane.empty()) d_bestPlane.resize(1);
+  cudaMemcpyAsync(thrust::raw_pointer_cast(d_bestPlane.data()),
+                  raw_planes + best_idx_device, sizeof(float4),
+                  cudaMemcpyDeviceToDevice, stream);
+
+  // mark inliers using the best plane (kernel reads plane from device memory)
+  {
+      int threads = 1024;
       int blocks = (nCount + threads - 1) / threads;
-      markInliersKernel<<<blocks, threads, 0, stream>>>(raw_input, nCount, raw_index, best_plane, (float)segP.distanceThreshold);
-      
-      std::cout << "RANSAC Best: " << max_inliers << " inliers. Model: " 
-                << best_plane.x << " " << best_plane.y << " " << best_plane.z << " " << best_plane.w << std::endl;
-  } else {
-       std::cout << "RANSAC Failed to find valid plane." << std::endl;
-       skip = true;
-       *out_num_points = 0;
+      // We need to pass float4 by value — launch a wrapper that loads from device ptr
+      markInliersFromDeviceKernel<<<blocks, threads, 0, stream>>>(
+          raw_input, nCount, raw_index,
+          thrust::raw_pointer_cast(d_bestPlane.data()),
+          (float)segP.distanceThreshold);
   }
 
-  // std::cout << "Segmentation kernel launched, retrieving results..." << std::endl;
-  
-  // controllo coefficienti
-  if (std::isnan(h_modelCoefficients[0]) || std::abs(h_modelCoefficients[3]) > 20)
+  // compact non-inlier points directly into caller's output buffer (ground removed)
+  unsigned int* raw_count = thrust::raw_pointer_cast(d_out_count.data());
+  cudaMemsetAsync(raw_count, 0, sizeof(unsigned int), stream);
+
   {
-    std::cout << "Segmentation failed, invalid model coefficients: [" 
-              << h_modelCoefficients[0] << ", " 
-              << h_modelCoefficients[1] << ", " 
-              << h_modelCoefficients[2] << ", " 
-              << h_modelCoefficients[3] << "]" << std::endl;
-    skip = true;
-    *out_num_points = 0; 
+      int threads = 1024;
+      int blocks = (nCount + threads - 1) / threads;
+      compactInliersKernel<<<blocks, threads, 0, stream>>>(
+          raw_input, raw_index, out_points, raw_count, nCount);
   }
 
-  // std::cout << "Segmentation successful" << std::endl;
-  
-  if (!skip)
-  {
-    // --------------------------------------------
-    // reset the GPU counter to 0
-    // --------------------------------------------
-    unsigned int* raw_count = thrust::raw_pointer_cast(d_out_count.data());
-    cudaMemsetAsync(raw_count, 0, sizeof(unsigned int), stream);
+  // single sync: only out_num_points is needed on host (for controller's inputSize)
+  cudaMemcpyAsync(out_num_points, raw_count, sizeof(unsigned int),
+                  cudaMemcpyDeviceToHost, stream);
+  cudaStreamSynchronize(stream);
 
-    // --------------------------------------------
-    // launch the compaction kernel on the stream
-    // --------------------------------------------
-    int threads = 256;
-    int blocks = (nCount + threads - 1) / threads;
-    // USE DEVICE POINTERS HERE: raw_input for read, raw_output for write
-    compactInliersKernel<<<blocks, threads, 0, stream>>>(raw_input, raw_index, raw_output, raw_count, nCount);
-
-    // --------------------------------------------
-    // copy the final count back to the CPU
-    // --------------------------------------------
-    cudaMemcpyAsync(out_num_points, raw_count, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream);
-        
-    // ------------------------------------------------------------------------------
-    // wait for the compaction and copy to finish before returning to the main node
-    // ------------------------------------------------------------------------------
-    cudaStreamSynchronize(stream); 
-
-    // Copy result within GPU (out_points is a device pointer from the controller)
-    if (*out_num_points > 0) {
-        cudaMemcpyAsync(out_points, raw_output, (*out_num_points) * 4 * sizeof(float), cudaMemcpyDeviceToDevice, stream);
-        cudaStreamSynchronize(stream);
-    }
-
-    auto t2 = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
-    totalTime += duration;
-    iterations++;
-    std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
-              << "\nSegmentation average duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
-              << "\n-------------------------------------------------------" << std::endl;
-  }
-
-  skip = false; // Reset dello stato di skip per la prossima chiamata
+  auto t2 = std::chrono::steady_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
+  totalTime += duration;
+  iterations++;
+  std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
+            << "\nSegmentation average duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
+            << "\n-------------------------------------------------------" << std::endl;
 }

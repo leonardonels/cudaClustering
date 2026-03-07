@@ -202,7 +202,7 @@ void CudaClustering::extractClusters(
         return;
     }
 
-    const int threads = 256;
+    const int threads = 1024;
 
     // ------------------------------------------------------------------
     // Find bounding box on CPU (tiny copy — 6 floats via thrust)
