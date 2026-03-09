@@ -682,15 +682,24 @@ void CudaClustering::extractClusters(
 
     auto t2 = std::chrono::steady_clock::now();
     auto total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
-    totalTime += total_ms;
-    iterations++;
-
-    std::cout << "From " << inputSize << " points → "
-              << numVoxels << " voxels → "
-              << numFiltered << " filtered → "
-              << numClusters << " clusters → "
-              << numCones << " cones\n"
-              << "Clustering time: " << total_ms << " ms\n"
-              << "Average time per iteration: " << totalTime / iterations << " ms after " << iterations << " iterations\n"
-              << "-------------------------------------------------------" << std::endl;
+    #ifdef ENABLE_VERBOSE
+        totalTime += total_ms;
+        iterations++;        
+        std::cout << "From " << inputSize << " points → "
+        << numVoxels << " voxels → "
+        << numFiltered << " filtered → "
+        << numClusters << " clusters → "
+        << numCones << " cones\n"
+        << "Clustering time: " << total_ms << " ms\n"
+        << "Average time per iteration: " << totalTime / iterations << " ms after " << iterations << " iterations\n"
+        << "-------------------------------------------------------" << std::endl;
+    #else
+        std::cout << "From " << inputSize << " points → "
+        << numVoxels << " voxels → "
+        << numFiltered << " filtered → "
+        << numClusters << " clusters → "
+        << numCones << " cones\n"
+        << "Clustering time: " << total_ms << " ms\n"
+        << "-------------------------------------------------------" << std::endl;
+    #endif
 }

@@ -34,11 +34,11 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 500
+    maxIterations: 100
     probability: 0.95
 
     #options
-    filter: false
+    filter: true
     publishFilteredPc: false
     
     segment: true
