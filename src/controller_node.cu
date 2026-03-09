@@ -266,6 +266,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     iterations++;
     std::cout << "\n--------------------- Total Time ----------------------\n"
               << "Total processing time for this callback: " << time_span.count() << " ms"
+              << "\nAverage processing time over " << iterations << " iterations: " << totalTime / iterations << " ms"
               << "\n-------------------------------------------------------\n"<< std::endl;
     
 }

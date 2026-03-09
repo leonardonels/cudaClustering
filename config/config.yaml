@@ -38,11 +38,11 @@
     probability: 0.95
 
     #options
-    filter: true
+    filter: false
     publishFilteredPc: false
     
     segment: true
-    publishSegmentedPc: true
+    publishSegmentedPc: false
     
     clustering: true
     

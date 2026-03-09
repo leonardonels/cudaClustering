@@ -80,6 +80,14 @@ __global__ void ransacPlaneKernel(
     float p2[3] = {points[idx2*4], points[idx2*4+1], points[idx2*4+2]};
     float p3[3] = {points[idx3*4], points[idx3*4+1], points[idx3*4+2]};
 
+    // look for planes only near the sensor (optional heuristic to improve speed and robustness)
+    if (p1[0]*p1[0] + p1[1]*p1[1] + p1[2]*p1[2] > 400.0f) {   // only consider points within 20m
+        if (threadIdx.x == 0) {
+            plane_inliers_counts[iter] = -1; // mark as invalid
+        }
+        return;
+    }
+
     // compute plane model (ax + by + cz + d = 0)
     float v1[3] = {p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]};
     float v2[3] = {p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]};
