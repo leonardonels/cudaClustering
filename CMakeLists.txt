@@ -125,6 +125,10 @@ target_include_directories(clustering PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(clustering PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
+install(TARGETS
+  clustering_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Install launch directory
 install(DIRECTORY
