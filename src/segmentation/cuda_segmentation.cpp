@@ -89,6 +89,11 @@ void CudaSegmentation::segment(
     // Fine misurazione del tempo
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+    #ifdef ENABLE_VERBOSE
+    this->duration_ += duration.count();
+    this->iterations_ ++;
+    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Durata media della segmentazione dopo %d iterazioni: %.3f ms", iterations_, duration_ / iterations_);
+    #endif
     RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Segmentazione completata in %.3f ms", duration.count());
 
     // Log dei coefficienti del modello

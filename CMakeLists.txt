@@ -1,8 +1,18 @@
 cmake_minimum_required(VERSION 3.8)
 project(clustering)
 
+# Verbose flag for cumulative timestaps
+option(ENABLE_VERBOSE "Print cumulative timing information for each callback" OFF)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+if(ENABLE_VERBOSE)
+  message(STATUS "Verbose timing information: ENABLED")
+  add_definitions(-DENABLE_VERBOSE)
+else()
+  message(STATUS "Verbose timing information: DISABLED")
 endif()
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")

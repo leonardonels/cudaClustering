@@ -2,18 +2,18 @@
 /clustering_node:
   ros__parameters:
     input_topic: /lidar_points #/lidar_points #/patchworkpp/nonground
-    segmented_topic: /segmented_points
+    segmented_topic: /segmented_pc
     filtered_topic: /filtered_points
     cluster_topic: /perception/newclusters #/perception/newclusters
     frame_id: "hesai_lidar"
 
     #clustering
-    minClusterSize : 5        # Minimum cluster size to filter out noise
+    minClusterSize : 1        # Minimum cluster size to filter out noise
     maxClusterSize : 500      # Maximum size for large objects
     voxelX: 0.8               # Down-sampling resolution in X (meters)
     voxelY: 0.8               # Down-sampling resolution in Y (meters)
     voxelZ: 0.8               # Down-sampling resolution in Z (meters)
-    countThreshold: 10         # Minimum points per voxel
+    countThreshold: 5         # Minimum points per voxel
 
     #filter for clusters
     clusterMaxX: 0.4

@@ -36,6 +36,9 @@ private:
         float *inputData = NULL;
         float *partialOutput = NULL;
 
+        double total_duration_ = 0.0;
+        int total_iterations_ = 0;
+
 
         IFilter *filter;
         IClustering *clustering;
