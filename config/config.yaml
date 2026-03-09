@@ -33,9 +33,6 @@
     maxIterations: 500
     probability: 0.75
     optimizeCoefficients: false
-    autoOptimizeCoefficients: false
-    maxFailedSegmentations: 10
-    minSuccessfulSegmentations: 60
 
     #options
     filterOnZ: false

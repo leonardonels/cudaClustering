@@ -80,9 +80,6 @@ void ControllerNode::loadParameters()
     declare_parameter("maxIterations", 166);
     declare_parameter("probability", 0.95);
     declare_parameter("optimizeCoefficients", false);
-    declare_parameter("autoOptimizeCoefficients", false);
-    declare_parameter("maxFailedSegmentations", 10);
-    declare_parameter("minSuccessfulSegmentations", 60);
     declare_parameter("skipClustering", false);
 
 
@@ -117,9 +114,6 @@ void ControllerNode::loadParameters()
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
     get_parameter("optimizeCoefficients", this->segP.optimizeCoefficients);
-    get_parameter("autoOptimizeCoefficients", this->autoOptimizeCoefficients);
-    get_parameter("maxFailedSegmentations", this->maxFailedSegmentations);
-    get_parameter("minSuccessfulSegmentations", this->minSuccessfulSegmentations);
     get_parameter("skipClustering", this->skipClustering);
 }
 
