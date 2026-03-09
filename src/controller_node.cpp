@@ -6,8 +6,7 @@ ControllerNode::ControllerNode() : Node("clustering_node")
 
 
     this->segmentation = new CudaSegmentation(segP);
-    this->failedSegmentations = 0;
-    this->successfulSegmentations = 0;
+
     this->filter = new CudaFilter(upFilterLimits, downFilterLimits);
 
     this->clustering = new CudaClustering(param);
