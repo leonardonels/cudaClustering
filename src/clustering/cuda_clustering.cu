@@ -1,4 +1,5 @@
 #include "cuda_clustering/clustering/cuda_clustering.hpp"
+#include "cuda_clustering/utils/cached_allocator.hpp"
 
 #include <iostream>
 #include <algorithm>
@@ -466,11 +467,9 @@ void CudaClustering::extractClusters(
     // ------------------------------------------------------------------
     if (d_voxelKeys.capacity() < inputSize) {
         d_voxelKeys.reserve(inputSize);
-        d_sortedKeys.reserve(inputSize);
         d_sortedIndices.reserve(inputSize);
     }
     d_voxelKeys.resize(inputSize);
-    d_sortedKeys.resize(inputSize);
     d_sortedIndices.resize(inputSize);
 
     blocks = (inputSize + threads - 1) / threads;
@@ -481,13 +480,12 @@ void CudaClustering::extractClusters(
         thrust::raw_pointer_cast(d_grid.data()));
 
     // ------------------------------------------------------------------
-    // 3. Sort by voxel key (GPU)
+    // 3. Sort by voxel key (GPU) — sort in-place, no extra copy
     // ------------------------------------------------------------------
-    d_sortedKeys = d_voxelKeys;
-    thrust::sequence(thrust::cuda::par.on(stream),
+    thrust::sequence(thrust::cuda::par(alloc).on(stream),
                      d_sortedIndices.begin(), d_sortedIndices.end());
-    thrust::sort_by_key(thrust::cuda::par.on(stream),
-                        d_sortedKeys.begin(), d_sortedKeys.end(),
+    thrust::sort_by_key(thrust::cuda::par(alloc).on(stream),
+                        d_voxelKeys.begin(), d_voxelKeys.end(),
                         d_sortedIndices.begin());
 
     // ------------------------------------------------------------------
@@ -499,8 +497,8 @@ void CudaClustering::extractClusters(
     d_voxelCounts.resize(inputSize);
 
     auto new_end = thrust::reduce_by_key(
-        thrust::cuda::par.on(stream),
-        d_sortedKeys.begin(), d_sortedKeys.end(),
+        thrust::cuda::par(alloc).on(stream),
+        d_voxelKeys.begin(), d_voxelKeys.end(),
         thrust::make_constant_iterator(1u),
         d_uniqueKeys.begin(),
         d_voxelCounts.begin());
@@ -518,7 +516,7 @@ void CudaClustering::extractClusters(
 
     int countThresh = ecp.countThreshold;
     auto filt_end = thrust::copy_if(
-        thrust::cuda::par.on(stream),
+        thrust::cuda::par(alloc).on(stream),
         d_uniqueKeys.begin(), d_uniqueKeys.end(),
         d_voxelCounts.begin(),  // stencil
         d_filteredKeys.begin(),
@@ -538,7 +536,7 @@ void CudaClustering::extractClusters(
     // ------------------------------------------------------------------
     if ((int)d_parent.capacity() < numFiltered) d_parent.reserve(numFiltered);
     d_parent.resize(numFiltered);
-    thrust::sequence(thrust::cuda::par.on(stream),
+    thrust::sequence(thrust::cuda::par(alloc).on(stream),
                      d_parent.begin(), d_parent.end());
 
     blocks = (numFiltered + threads - 1) / threads;
@@ -578,12 +576,12 @@ void CudaClustering::extractClusters(
     d_uniqueLabels.resize(numFiltered);
 
     // copy parent, sort, unique to get distinct root labels
-    thrust::copy(thrust::cuda::par.on(stream),
+    thrust::copy(thrust::cuda::par(alloc).on(stream),
                  d_parent.begin(), d_parent.end(),
                  d_uniqueLabels.begin());
-    thrust::sort(thrust::cuda::par.on(stream),
+    thrust::sort(thrust::cuda::par(alloc).on(stream),
                  d_uniqueLabels.begin(), d_uniqueLabels.end());
-    auto ul_end = thrust::unique(thrust::cuda::par.on(stream),
+    auto ul_end = thrust::unique(thrust::cuda::par(alloc).on(stream),
                                   d_uniqueLabels.begin(), d_uniqueLabels.end());
     int numClusters = (int)(ul_end - d_uniqueLabels.begin());
     d_uniqueLabels.resize(numClusters);
@@ -596,7 +594,7 @@ void CudaClustering::extractClusters(
     // build label → compact ID map (just sequential 0..numClusters-1)
     if ((int)d_labelMap.capacity() < numClusters) d_labelMap.reserve(numClusters);
     d_labelMap.resize(numClusters);
-    thrust::sequence(thrust::cuda::par.on(stream),
+    thrust::sequence(thrust::cuda::par(alloc).on(stream),
                      d_labelMap.begin(), d_labelMap.end());
 
     // allocate and init per-cluster bbox + sizes
@@ -609,12 +607,12 @@ void CudaClustering::extractClusters(
     d_clusterSizes.resize(numClusters);
 
     // init bbox: min = +inf, max = -inf ; sizes = 0
-    thrust::fill(thrust::cuda::par.on(stream),
+    thrust::fill(thrust::cuda::par(alloc).on(stream),
                  d_clusterSizes.begin(), d_clusterSizes.end(), 0u);
     {
-        // interleave init: [+inf, +inf, +inf, -inf, -inf, -inf] per cluster
+        // init directly into d_clusterBBox — no temp device_vector
         float* raw_bbox = thrust::raw_pointer_cast(d_clusterBBox.data());
-        thrust::for_each(thrust::cuda::par.on(stream),
+        thrust::for_each(thrust::cuda::par(alloc).on(stream),
             thrust::make_counting_iterator(0),
             thrust::make_counting_iterator(numClusters * 6),
             [raw_bbox] __device__ (int i) {

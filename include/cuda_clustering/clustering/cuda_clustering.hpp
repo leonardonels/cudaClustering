@@ -8,6 +8,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "cuda_clustering/clustering/iclustering.hpp"
+#include "cuda_clustering/utils/cached_allocator.hpp"
 
 typedef struct {
   unsigned int minClusterSize;
@@ -36,6 +37,7 @@ class CudaClustering : public IClustering
     extractClusterParam_t ecp;
     cluster_filter filterParams;
     cudaStream_t stream = NULL;
+    CachedAllocator alloc;  // reusable memory pool for thrust temp buffers
 
     // -------------------------------------------------------------------------
     // Device vectors — all intermediate data stays on GPU
@@ -45,8 +47,7 @@ class CudaClustering : public IClustering
     thrust::device_vector<int>   d_grid;        // [gridX, gridY]
 
     // voxelization
-    thrust::device_vector<int>          d_voxelKeys;     // voxel hash per point
-    thrust::device_vector<int>          d_sortedKeys;    // sorted voxel hashes
+    thrust::device_vector<int>          d_voxelKeys;     // voxel hash per point (sorted in-place)
     thrust::device_vector<unsigned int> d_sortedIndices; // original indices after sort
     thrust::device_vector<int>          d_uniqueKeys;    // unique voxel hashes
     thrust::device_vector<unsigned int> d_voxelCounts;   // points per voxel

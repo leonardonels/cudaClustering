@@ -247,7 +247,7 @@ void CudaSegmentation::segment(
   float4* raw_planes = thrust::raw_pointer_cast(d_planes.data());
 
   // init counts to -1
-  thrust::fill(thrust::cuda::par.on(stream), d_counts.begin(), d_counts.begin() + max_iter, -1);
+  thrust::fill(thrust::cuda::par(alloc).on(stream), d_counts.begin(), d_counts.begin() + max_iter, -1);
 
   // launch RANSAC
   // each block is 1 iteration, using 1024 threads for inlier counting + reduction
@@ -258,7 +258,7 @@ void CudaSegmentation::segment(
   );
 
   // find best RANSAC iteration entirely on GPU using thrust::max_element
-  auto best_it = thrust::max_element(thrust::cuda::par.on(stream),
+  auto best_it = thrust::max_element(thrust::cuda::par(alloc).on(stream),
                                      d_counts.begin(), d_counts.begin() + max_iter);
   int best_idx_device = (int)(best_it - d_counts.begin());
 

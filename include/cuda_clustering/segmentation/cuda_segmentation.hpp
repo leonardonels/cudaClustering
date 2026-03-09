@@ -1,6 +1,7 @@
 #pragma once
 
 #include "isegmentation.hpp"
+#include "cuda_clustering/utils/cached_allocator.hpp"
 
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
@@ -72,6 +73,7 @@ class CudaSegmentation : public Isegmentation
 {
 private:
     segParam_t segP;
+    CachedAllocator alloc;  // reusable memory pool for thrust temp buffers
 
     double totalTime = 0.0;
     unsigned int iterations = 0;
