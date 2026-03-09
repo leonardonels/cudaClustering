@@ -34,7 +34,7 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 500
+    maxIterations: 100
     probability: 0.95
 
     #options
@@ -42,7 +42,7 @@
     publishFilteredPc: false
     
     segment: true
-    publishSegmentedPc: true
+    publishSegmentedPc: false
     
     clustering: true
     

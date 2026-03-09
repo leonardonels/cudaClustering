@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
+# Verbose flag for cumulative timestaps
+option(ENABLE_VERBOSE "Print cumulative timing information for each callback" OFF)
+
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
 
@@ -8,8 +11,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra)
 endif()
 
-# Pinned memory works well on x86 but can cause issues on Jetson (ARM).
-# Auto-detect architecture and set the default accordingly.
+# Pinned memory: auto-detect architecture and set the default accordingly.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
   option(USE_PINNED_MEMORY "Use CUDA pinned (page-locked) host memory" ON)
 else()
@@ -21,6 +23,13 @@ if(USE_PINNED_MEMORY)
   add_definitions(-DUSE_PINNED_MEMORY)
 else()
   message(STATUS "Pinned host memory: DISABLED")
+endif()
+
+if(ENABLE_VERBOSE)
+  message(STATUS "Verbose timing information: ENABLED")
+  add_definitions(-DENABLE_VERBOSE)
+else()
+  message(STATUS "Verbose timing information: DISABLED")
 endif()
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")
@@ -125,6 +134,10 @@ target_include_directories(clustering PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(clustering PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
+install(TARGETS
+  clustering_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Install launch directory
 install(DIRECTORY

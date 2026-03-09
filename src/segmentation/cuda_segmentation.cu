@@ -80,6 +80,14 @@ __global__ void ransacPlaneKernel(
     float p2[3] = {points[idx2*4], points[idx2*4+1], points[idx2*4+2]};
     float p3[3] = {points[idx3*4], points[idx3*4+1], points[idx3*4+2]};
 
+    // look for planes only near the sensor (optional heuristic to improve speed and robustness)
+    if (p1[0]*p1[0] + p1[1]*p1[1] + p1[2]*p1[2] > 400.0f) {   // only consider points within 20m
+        if (threadIdx.x == 0) {
+            plane_inliers_counts[iter] = -1; // mark as invalid
+        }
+        return;
+    }
+
     // compute plane model (ax + by + cz + d = 0)
     float v1[3] = {p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]};
     float v2[3] = {p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]};
@@ -207,7 +215,6 @@ void CudaSegmentation::segment(
     cudaStream_t stream)
 {
   std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
-            << "\nInput point count for segmentation: " << nCount 
             << std::endl;
   
   auto t1 = std::chrono::steady_clock::now();
@@ -233,7 +240,7 @@ void CudaSegmentation::segment(
   // ----------------------------------------------------
   // Custom RANSAC Implementation
   // ----------------------------------------------------
-  std::cout << "Launching Custom RANSAC kernel on GPU..." << std::endl;
+  // std::cout << "Launching Custom RANSAC kernel on GPU..." << std::endl;
 
   int max_iter = segP.maxIterations;
   if (max_iter <= 0) max_iter = 100;
@@ -302,9 +309,14 @@ void CudaSegmentation::segment(
 
   auto t2 = std::chrono::steady_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
-  totalTime += duration;
-  iterations++;
-  std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
-            << "\nSegmentation average duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
-            << "\n-------------------------------------------------------" << std::endl;
+  #ifdef ENABLE_VERBOSE
+      totalTime += duration;
+      iterations++;
+      std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
+                << "\nAverage segmentation duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
+                << "\n-------------------------------------------------------" << std::endl;
+  #else
+      std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
+                << "\n-------------------------------------------------------" << std::endl;
+  #endif
 }

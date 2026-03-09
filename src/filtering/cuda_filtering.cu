@@ -100,11 +100,18 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
 
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    totalTime += duration.count();
-    iterations++;
-
-    std::cout << "inputSize: " << inputSize 
-              << ", outputSize: " << *outputSize 
-              << " in " << duration.count() << " ms" 
-              << "\n-------------------------------------------------------" << std::endl;
+    #ifdef ENABLE_VERBOSE
+        totalTime += duration.count();
+        iterations++;
+        std::cout << "inputSize: " << inputSize 
+                  << ", outputSize: " << *outputSize 
+                  << " in " << duration.count() << " ms"
+                  << "\nAverage filter duration: " << (totalTime / iterations) << " ms over " << iterations << " iterations." 
+                  << "\n-------------------------------------------------------" << std::endl;
+    #else
+       std::cout << "inputSize: " << inputSize 
+                  << ", outputSize: " << *outputSize 
+                  << " in " << duration.count() << " ms" 
+                  << "\n-------------------------------------------------------" << std::endl; 
+    #endif
 }

@@ -262,10 +262,16 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-    totalTime += time_span.count();
-    iterations++;
-    std::cout << "\n--------------------- Total Time ----------------------\n"
-              << "Total processing time for this callback: " << time_span.count() << " ms"
-              << "\n-------------------------------------------------------\n"<< std::endl;
-    
+    #ifdef ENABLE_VERBOSE
+        totalTime += time_span.count();
+        iterations++;
+        std::cout << "\n--------------------- Total Time ----------------------\n"
+                  << "Total processing time for this callback: " << time_span.count() << " ms"
+                  << "\nAverage processing time over " << iterations << " iterations: " << totalTime / iterations << " ms"
+                  << "\n-------------------------------------------------------\n"<< std::endl;
+    #else
+                  std::cout << "\n--------------------- Total Time ----------------------\n"
+                  << "Total processing time for this callback: " << time_span.count() << " ms"
+                  << "\n-------------------------------------------------------\n"<< std::endl;
+    #endif
 }
