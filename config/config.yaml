@@ -25,10 +25,10 @@
     maxHeight: 0.4          #of the lowest point
 
     #filter
-    downFilterLimitX: -50.0
-    upFilterLimitX: 50.0
-    downFilterLimitY: -50.0
-    upFilterLimitY: 50.0
+    downFilterLimitX: -25.0
+    upFilterLimitX: 25.0
+    downFilterLimitY: -25.0
+    upFilterLimitY: 25.0
     downFilterLimitZ: -5.0
     upFilterLimitZ: 5.0
 
@@ -38,7 +38,7 @@
     probability: 0.75
 
     #options
-    filter: false
+    filter: true
     publishFilteredPc: false
     
     segment: true
@@ -46,6 +46,8 @@
     
     clustering: true
     publishCluster: true
+
+    limitWarning_ms: 30
     
     
 

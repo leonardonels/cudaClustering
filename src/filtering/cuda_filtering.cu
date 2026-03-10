@@ -62,9 +62,7 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
                                 float** output, unsigned int* outputSize)
 {
     auto t1 = std::chrono::steady_clock::now();
-    #ifdef ENABLE_VERBOSE
-        std::cout << "\n------------ CUDA XYZ Filter (Custom) ----------------- " << std::endl;
-    #endif
+        // std::cout << "\n------------ CUDA XYZ Filter (Custom) ----------------- " << std::endl;
 
     // ensure temp buffer is large enough
     size_t needed = static_cast<size_t>(inputSize) * 4;
@@ -100,15 +98,9 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
         cudaStreamSynchronize(stream);
     }
 
-    auto t2 = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     #ifdef ENABLE_VERBOSE
-        totalTime += duration.count();
-        iterations++;
-        std::cout << "inputSize: " << inputSize 
-                  << ", outputSize: " << *outputSize 
-                  << " in " << duration.count() << " ms"
-                  << "\nAverage filter duration: " << (totalTime / iterations) << " ms over " << iterations << " iterations." 
-                  << "\n-------------------------------------------------------" << std::endl;
+        auto t2 = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+        std::cout << "PCL filtered in " << duration.count() << " ms" << std::endl;
     #endif
 }

@@ -85,6 +85,7 @@ void ControllerNode::loadParameters()
     declare_parameter("probability", 0.75);
     declare_parameter("clustering", true);
     declare_parameter("publishCluster", true);
+    declare_parameter("limitWarning_ms", 30);
 
     get_parameter("input_topic", this->input_topic);
     get_parameter("segmented_topic", this->segmented_topic);
@@ -122,6 +123,7 @@ void ControllerNode::loadParameters()
     get_parameter("probability", this->segP.probability);
     get_parameter("clustering", this->clusteringFlag);
     get_parameter("publishCluster", this->publishCluster);
+    get_parameter("limitWarning_ms", this->limitWarning_ms);
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -188,9 +190,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     #ifdef ENABLE_VERBOSE
-        std::cout << "--------------------- Conversion ----------------------\n"
-                  << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" 
-                  << "\n-------------------------------------------------------"<< std::endl;
+        std::cout << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" << std::endl;
     #endif
 
     // -----------------------------------------
@@ -266,21 +266,15 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         }
     }
     
-    std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-    std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     #ifdef ENABLE_VERBOSE
-        totalTime += time_span.count();
-        iterations++;
-        std::cout << "\n--------------------- Total Time ----------------------\n"
-                  << "Total processing time for this callback: " << time_span.count() << " ms"
-                  << "\nAverage processing time over " << iterations << " iterations: " << totalTime / iterations << " ms"
-                  << "\n-------------------------------------------------------\n"<< std::endl;
-    #endif
+        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
+        std::cout << "Total processing time for this callback: " << time_span.count() << " ms\n" << std::endl;
 
-    #ifdef EXECUTION_SPEED_WARNING
-        int limit = 20; // ms
-        if (time_span.count() > limit) {
-            std::cerr << "Warning: Processing time of " << time_span.count() << " ms exceeds the " << limit << " ms threshold!\n" << std::endl;
-        }
+        if (time_span.count() > this->limitWarning_ms) {
+            std::cout << "----------------------------------------------------------------------------\n"
+                      << "Warning: Processing time exceeded " << this->limitWarning_ms << " ms! Actual time: " << time_span.count() << " ms\n" 
+                      << "----------------------------------------------------------------------------\n" << std::endl;
+        } 
     #endif
 }

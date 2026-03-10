@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
-# Verbose flag for cumulative timestaps
-option(ENABLE_VERBOSE "Print cumulative timing information for each callback" OFF)
-
-option(EXECUTION_SPEED_WARNING "Enable compiler warnings about potential performance issues" OFF)
+option(ENABLE_VERBOSE "Print essential timings information for each callback" ON)
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
@@ -32,13 +29,6 @@ if(ENABLE_VERBOSE)
   add_definitions(-DENABLE_VERBOSE)
 else()
   message(STATUS "Verbose timing information: DISABLED")
-endif()
-
-if(EXECUTION_SPEED_WARNING)
-  message(STATUS "Execution speed warnings: ENABLED")
-  add_definitions(-DEXECUTION_SPEED_WARNING)
-else()
-  message(STATUS "Execution speed warnings: DISABLED")
 endif()
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")

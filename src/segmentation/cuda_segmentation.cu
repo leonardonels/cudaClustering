@@ -214,11 +214,8 @@ void CudaSegmentation::segment(
     unsigned int *out_num_points,
     cudaStream_t stream)
 {
-  #ifdef ENABLE_VERBOSE
-      std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
-                << std::endl;
-  #endif
-  
+      // std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
+      //           << std::endl;
   auto t1 = std::chrono::steady_clock::now();
 
   if (nCount < 10) {
@@ -309,13 +306,10 @@ void CudaSegmentation::segment(
                   cudaMemcpyDeviceToHost, stream);
   cudaStreamSynchronize(stream);
 
-  auto t2 = std::chrono::steady_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
   #ifdef ENABLE_VERBOSE
-      totalTime += duration;
-      iterations++;
-      std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
-                << "\nAverage segmentation duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
-                << "\n-------------------------------------------------------" << std::endl;
+      auto t2 = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
+      std::cout << "Segmentation completed in " << duration / 1e6 << " ms. "
+                << "Best plane found with " << *best_it << " inliers out of " << nCount << " points." << std::endl;
   #endif
 }

@@ -40,6 +40,7 @@ private:
         float downFilterLimitZ, upFilterLimitZ;
         clustering_parameters param;
         segParam_t segP;
+        int limitWarning_ms;
 
         double totalTime = 0.0;
         unsigned int iterations = 0;

@@ -542,14 +542,6 @@ void CudaClustering::extractClusters(
 
     int numFiltered = (int)(filt_end - d_filteredKeys.begin());
 
-    if (numFiltered == 0) {
-        #ifdef ENABLE_VERBOSE
-            RCLCPP_WARN(rclcpp::get_logger("clustering_node"),
-                         "No voxels survived countThreshold filter");
-        #endif
-        return;
-    }
-
     // ------------------------------------------------------------------
     // 6. Union-find on 26-connected voxel grid
     // ------------------------------------------------------------------
@@ -594,13 +586,6 @@ void CudaClustering::extractClusters(
     auto ul_end = thrust::unique(thrust::cuda::par(alloc).on(stream),
                                   d_uniqueLabels.begin(), d_uniqueLabels.begin() + numFiltered);
     int numClusters = (int)(ul_end - d_uniqueLabels.begin());
-
-    if (numClusters == 0) {
-        #ifdef ENABLE_VERBOSE
-            RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "No clusters found");
-        #endif
-        return;
-    }
 
     // build label → compact ID map (sequential 0..numClusters-1)
     d_labelMap.resize(numClusters);
@@ -680,18 +665,9 @@ void CudaClustering::extractClusters(
         }
     }
 
-    auto t2 = std::chrono::steady_clock::now();
-    auto total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
     #ifdef ENABLE_VERBOSE
-        totalTime += total_ms;
-        iterations++;        
-        std::cout << "From " << inputSize << " points → "
-        << numVoxels << " voxels → "
-        << numFiltered << " filtered → "
-        << numClusters << " clusters → "
-        << numCones << " cones\n"
-        << "Clustering time: " << total_ms << " ms\n"
-        << "Average time per iteration: " << totalTime / iterations << " ms after " << iterations << " iterations\n"
-        << "-------------------------------------------------------" << std::endl;
+        auto t2 = std::chrono::steady_clock::now();
+        auto total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
+        std::cout << "Clustering time: " << total_ms << " ms" << std::endl;
     #endif
 }
