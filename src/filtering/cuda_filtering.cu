@@ -62,7 +62,9 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
                                 float** output, unsigned int* outputSize)
 {
     auto t1 = std::chrono::steady_clock::now();
-    std::cout << "\n------------ CUDA XYZ Filter (Custom) ----------------- " << std::endl;
+    #ifdef ENABLE_VERBOSE
+        std::cout << "\n------------ CUDA XYZ Filter (Custom) ----------------- " << std::endl;
+    #endif
 
     // ensure temp buffer is large enough
     size_t needed = static_cast<size_t>(inputSize) * 4;
@@ -108,10 +110,5 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
                   << " in " << duration.count() << " ms"
                   << "\nAverage filter duration: " << (totalTime / iterations) << " ms over " << iterations << " iterations." 
                   << "\n-------------------------------------------------------" << std::endl;
-    #else
-       std::cout << "inputSize: " << inputSize 
-                  << ", outputSize: " << *outputSize 
-                  << " in " << duration.count() << " ms" 
-                  << "\n-------------------------------------------------------" << std::endl; 
     #endif
 }

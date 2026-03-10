@@ -214,8 +214,10 @@ void CudaSegmentation::segment(
     unsigned int *out_num_points,
     cudaStream_t stream)
 {
-  std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
-            << std::endl;
+  #ifdef ENABLE_VERBOSE
+      std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
+                << std::endl;
+  #endif
   
   auto t1 = std::chrono::steady_clock::now();
 
@@ -314,9 +316,6 @@ void CudaSegmentation::segment(
       iterations++;
       std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
                 << "\nAverage segmentation duration: " << (totalTime / iterations) / 1e6 << " ms over " << iterations << " iterations."
-                << "\n-------------------------------------------------------" << std::endl;
-  #else
-      std::cout << "Segmentation completed in " << duration / 1e6 << " ms, found " << *out_num_points << " inliers"
                 << "\n-------------------------------------------------------" << std::endl;
   #endif
 }

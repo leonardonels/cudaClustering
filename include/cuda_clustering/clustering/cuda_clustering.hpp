@@ -46,10 +46,14 @@ class CudaClustering : public IClustering
     thrust::device_vector<float> d_bbox;        // [minX, minY, minZ, maxX, maxY, maxZ]
     thrust::device_vector<int>   d_grid;        // [gridX, gridY]
 
+    // pipeline counts stored on device to avoid mid-pipeline D→H syncs
+    // layout: [numVoxels, numFiltered, numClusters, numCones]
+    int*         d_counts = nullptr;         // pinned host memory (4 ints)
+    int*         d_countsDevice = nullptr;   // device-side counts
+
     // voxelization
     thrust::device_vector<int>          d_voxelKeys;     // voxel hash per point (sorted in-place)
     thrust::device_vector<int>          d_origKeys;      // original per-point voxel keys (before sort)
-    thrust::device_vector<unsigned int> d_sortedIndices; // original indices after sort
     thrust::device_vector<int>          d_uniqueKeys;    // unique voxel hashes
     thrust::device_vector<unsigned int> d_voxelCounts;   // points per voxel
     thrust::device_vector<int>          d_filteredKeys;  // voxels surviving countThreshold
@@ -68,7 +72,6 @@ class CudaClustering : public IClustering
 
     // output cones
     thrust::device_vector<float>        d_conePoints;    // [3 * maxCones]
-    thrust::device_vector<unsigned int> d_numCones;      // single element counter
 
     double totalTime = 0.0;
     unsigned int iterations = 0;

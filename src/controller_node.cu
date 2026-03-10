@@ -187,9 +187,11 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    std::cout << "--------------------- Conversion ----------------------\n"
-              << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" 
-              << "\n-------------------------------------------------------"<< std::endl;
+    #ifdef ENABLE_VERBOSE
+        std::cout << "--------------------- Conversion ----------------------\n"
+                  << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" 
+                  << "\n-------------------------------------------------------"<< std::endl;
+    #endif
 
     // -----------------------------------------
     // CUDA Filtering (if enabled)
@@ -272,10 +274,6 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         std::cout << "\n--------------------- Total Time ----------------------\n"
                   << "Total processing time for this callback: " << time_span.count() << " ms"
                   << "\nAverage processing time over " << iterations << " iterations: " << totalTime / iterations << " ms"
-                  << "\n-------------------------------------------------------\n"<< std::endl;
-    #else
-                  std::cout << "\n--------------------- Total Time ----------------------\n"
-                  << "Total processing time for this callback: " << time_span.count() << " ms"
                   << "\n-------------------------------------------------------\n"<< std::endl;
     #endif
 
