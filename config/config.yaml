@@ -41,7 +41,7 @@
     segment: true
     publishSegmentedPc: false
     
-    skipClustering: false
+    clustering: false
     
     
 

@@ -80,7 +80,7 @@ void ControllerNode::loadParameters()
     declare_parameter("maxIterations", 166);
     declare_parameter("probability", 0.95);
     declare_parameter("optimizeCoefficients", false);
-    declare_parameter("skipClustering", false);
+    declare_parameter("clustering", false);
 
 
     get_parameter("input_topic", this->input_topic);
@@ -114,7 +114,7 @@ void ControllerNode::loadParameters()
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
     get_parameter("optimizeCoefficients", this->segP.optimizeCoefficients);
-    get_parameter("skipClustering", this->skipClustering);
+    get_parameter("clustering", this->clustering);
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -163,6 +163,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
 
+    // ========
+    // Filter
+    // ========
     if (this->filterOnZ)
     {
         this->filter->filterPoints(inputData, inputSize, &partialOutput, &size);
@@ -178,6 +181,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         inputData = tmp;
     }
 
+    // ==============
+    // Segmentation
+    // ==============
     if (this->segmentFlag)
     {
         segmentation->segment(inputData, inputSize, &partialOutput, &size);
@@ -195,44 +201,25 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         inputData = tmp;
     }
 
-    if (inputSize == 0 || this->skipClustering)
+    // =============
+    // Clustering
+    // =============
+    if (this->clustering && inputSize != 0)
     {
-        // this->failedSegmentations++;
-        // if(this->autoOptimizeCoefficients && this->failedSegmentations >= this->maxFailedSegmentations){
-        //     this->failedSegmentations = 0;
-        //     this->segP.optimizeCoefficients = false;
-        //     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: disabling coefficients optimization.");
-        // }
-
-        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-        RCLCPP_WARN(rclcpp::get_logger("clustering_node"), "No points to cluster.");
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
-        std::cout << "\n------------------------------------ "<< std::endl;
-        return;
+        this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
     }
 
-    // this->successfulSegmentations++;
-
-    // if(this->autoOptimizeCoefficients && !this->segP.optimizeCoefficients && this->successfulSegmentations >= this->minSuccessfulSegmentations){
-    //     this->successfulSegmentations = 0;
-    //     this->segP.optimizeCoefficients = true;
-    //     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Auto-optimization: enabling coefficients optimization.");
-    // }
-
-    this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
-    // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+    // ========
+    // Timing
+    // ========
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
-    #ifdef ENABLE_VERBOSE
-    total_duration_ += time_span.count();
-    total_iterations_ ++;
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Durata totale dopo %d iterazioni: %.3f ms", total_iterations_, total_duration_ / total_iterations_);
-    #endif
     std::cout << "\n------------------------------------ "<< std::endl;
 
-
+    // =========
+    // Publish
+    // =========
     cones->header.stamp = this->now();
     if(cones->points.size() != 0)
         cones_array_pub->publish(*cones);

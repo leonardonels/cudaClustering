@@ -24,21 +24,13 @@ private:
         float downFilterLimits, upFilterLimits;
         clustering_parameters param;
         segParam_t segP;
-        bool autoOptimizeCoefficients;
-        int failedSegmentations;
-        int successfulSegmentations;
-        int maxFailedSegmentations;
-        int minSuccessfulSegmentations;
-        bool skipClustering;
+
+        bool clustering;
 
         cudaStream_t stream = NULL;
         unsigned int memoryAllocated = 0;
         float *inputData = NULL;
         float *partialOutput = NULL;
-
-        double total_duration_ = 0.0;
-        int total_iterations_ = 0;
-
 
         IFilter *filter;
         IClustering *clustering;
