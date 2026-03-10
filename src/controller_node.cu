@@ -80,11 +80,11 @@ void ControllerNode::loadParameters()
     declare_parameter("segment", false);
     declare_parameter("publishFilteredPc", false);
     declare_parameter("publishSegmentedPc", false);
-    declare_parameter("distanceThreshold", 0.15);
+    declare_parameter("distanceThreshold", 0.1);
     declare_parameter("maxIterations", 166);
-    declare_parameter("probability", 0.95);
+    declare_parameter("probability", 0.75);
     declare_parameter("clustering", true);
-
+    declare_parameter("publishCluster", true);
 
     get_parameter("input_topic", this->input_topic);
     get_parameter("segmented_topic", this->segmented_topic);
@@ -121,6 +121,7 @@ void ControllerNode::loadParameters()
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
     get_parameter("clustering", this->clusteringFlag);
+    get_parameter("publishCluster", this->publishCluster);
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -251,13 +252,16 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         raw_in = thrust::raw_pointer_cast(d_input.data());
         raw_out = thrust::raw_pointer_cast(d_output.data());
 
-        // -----------------------------------------------------------
-        // call to extractClusters() from NVIDIA's precompiled library
-        // -----------------------------------------------------------
+        // -----------------------------
+        // call to extractClusters()
+        // -----------------------------
         this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
-
-        cones->header.stamp = this->now();
-        if(cones->points.size() != 0) cones_array_pub->publish(*cones);
+        
+        if (this->publishCluster)
+        {
+            cones->header.stamp = this->now();
+            cones_array_pub->publish(*cones);
+        }
     }
     
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
@@ -273,5 +277,12 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
                   std::cout << "\n--------------------- Total Time ----------------------\n"
                   << "Total processing time for this callback: " << time_span.count() << " ms"
                   << "\n-------------------------------------------------------\n"<< std::endl;
+    #endif
+
+    #ifdef EXECUTION_SPEED_WARNING
+        int limit = 20; // ms
+        if (time_span.count() > limit) {
+            std::cerr << "Warning: Processing time of " << time_span.count() << " ms exceeds the " << limit << " ms threshold!\n" << std::endl;
+        }
     #endif
 }

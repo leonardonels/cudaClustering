@@ -34,17 +34,18 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 100
-    probability: 0.95
+    maxIterations: 80     # optimal range: 50-80 -> 80 iterations on the orin means more or less 8 parallel iterations times 10 sequential iterations
+    probability: 0.75
 
     #options
-    filter: true
+    filter: false
     publishFilteredPc: false
     
     segment: true
     publishSegmentedPc: false
     
     clustering: true
+    publishCluster: true
     
     
 

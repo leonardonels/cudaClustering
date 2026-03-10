@@ -34,7 +34,7 @@ class ControllerNode : public rclcpp::Node
 private:
         std::shared_ptr<visualization_msgs::msg::Marker> cones{new visualization_msgs::msg::Marker()};
         std::string input_topic, segmented_topic, filtered_topic, cluster_topic, frame_id;
-        bool filterFlag, clusteringFlag, segmentFlag, publishFilteredPc, publishSegmentedPc;
+        bool filterFlag, clusteringFlag, segmentFlag, publishFilteredPc, publishSegmentedPc, publishCluster;
         float downFilterLimitX, upFilterLimitX;
         float downFilterLimitY, upFilterLimitY;
         float downFilterLimitZ, upFilterLimitZ;
