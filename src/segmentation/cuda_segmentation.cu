@@ -309,7 +309,7 @@ void CudaSegmentation::segment(
   #ifdef ENABLE_VERBOSE
       auto t2 = std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
-      std::cout << "Segmentation completed in " << duration / 1e6 << " ms. "
-                << "Best plane found with " << *best_it << " inliers out of " << nCount << " points." << std::endl;
+      std::cout << "Segmentation completed in " << duration / 1e6 << " ms.\n"
+                << "  Best plane found with " << *best_it << " inliers out of " << nCount << " points." << std::endl;
   #endif
 }

@@ -259,22 +259,22 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         // -----------------------------
         this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
         
+        #ifdef ENABLE_VERBOSE
+            std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
+            std::cout << "Total processing time for this callback: " << time_span.count() << " ms\n" << std::endl;
+    
+            if (time_span.count() > this->limitWarning_ms) {
+                std::cout << "----------------------------------------------------------------------------\n"
+                          << "Warning: Processing time exceeded " << this->limitWarning_ms << " ms! Actual time: " << time_span.count() << " ms\n" 
+                          << "----------------------------------------------------------------------------\n" << std::endl;
+            } 
+        #endif
+
         if (this->publishCluster)
         {
             cones->header.stamp = this->now();
             cones_array_pub->publish(*cones);
         }
     }
-    
-    #ifdef ENABLE_VERBOSE
-        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-        std::cout << "Total processing time for this callback: " << time_span.count() << " ms\n" << std::endl;
-
-        if (time_span.count() > this->limitWarning_ms) {
-            std::cout << "----------------------------------------------------------------------------\n"
-                      << "Warning: Processing time exceeded " << this->limitWarning_ms << " ms! Actual time: " << time_span.count() << " ms\n" 
-                      << "----------------------------------------------------------------------------\n" << std::endl;
-        } 
-    #endif
 }
