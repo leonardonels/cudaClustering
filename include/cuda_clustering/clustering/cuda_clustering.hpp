@@ -48,6 +48,7 @@ class CudaClustering : public IClustering
 
     // voxelization
     thrust::device_vector<int>          d_voxelKeys;     // voxel hash per point (sorted in-place)
+    thrust::device_vector<int>          d_origKeys;      // original per-point voxel keys (before sort)
     thrust::device_vector<unsigned int> d_sortedIndices; // original indices after sort
     thrust::device_vector<int>          d_uniqueKeys;    // unique voxel hashes
     thrust::device_vector<unsigned int> d_voxelCounts;   // points per voxel

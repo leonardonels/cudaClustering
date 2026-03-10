@@ -480,8 +480,14 @@ void CudaClustering::extractClusters(
         thrust::raw_pointer_cast(d_grid.data()));
 
     // ------------------------------------------------------------------
-    // 3. Sort by voxel key (GPU) — sort in-place, no extra copy
+    // 3. Save original per-point keys, then sort (GPU)
     // ------------------------------------------------------------------
+    if (d_origKeys.capacity() < inputSize) d_origKeys.reserve(inputSize);
+    d_origKeys.resize(inputSize);
+    thrust::copy(thrust::cuda::par(alloc).on(stream),
+                 d_voxelKeys.begin(), d_voxelKeys.end(),
+                 d_origKeys.begin());
+
     thrust::sequence(thrust::cuda::par(alloc).on(stream),
                      d_sortedIndices.begin(), d_sortedIndices.end());
     thrust::sort_by_key(thrust::cuda::par(alloc).on(stream),
@@ -560,7 +566,7 @@ void CudaClustering::extractClusters(
 
     blocks = (inputSize + threads - 1) / threads;
     assignClusterLabelsKernel<<<blocks, threads, 0, stream>>>(
-        thrust::raw_pointer_cast(d_voxelKeys.data()),
+        thrust::raw_pointer_cast(d_origKeys.data()),   // original per-point keys (NOT sorted)
         inputSize,
         thrust::raw_pointer_cast(d_filteredKeys.data()),
         numFiltered,
