@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
-option(ENABLE_VERBOSE "Print essential timings information for each callback" ON)
+option(ENABLE_VERBOSE "Print essential timings information for each callback" OFF)
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
