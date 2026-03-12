@@ -446,8 +446,10 @@ void CudaClustering::extractClusters(
     float* /*outputEC*/,      // device pointer  (unused in this pipeline)
     std::shared_ptr<visualization_msgs::msg::Marker> cones)
 {
-    auto t1 = std::chrono::steady_clock::now();
-
+    #ifdef ENABLE_VERBOSE
+        auto t1 = std::chrono::steady_clock::now();
+    #endif
+    
     if (inputSize < ecp.minClusterSize) {
         RCLCPP_WARN(rclcpp::get_logger("clustering_node"),
                      "Not enough points for clustering (%u < %u)", inputSize, ecp.minClusterSize);

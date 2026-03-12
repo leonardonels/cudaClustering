@@ -61,7 +61,9 @@ CudaFilter::~CudaFilter()
 void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
                                 float** output, unsigned int* outputSize)
 {
-    auto t1 = std::chrono::steady_clock::now();
+    #ifdef ENABLE_VERBOSE
+        auto t1 = std::chrono::steady_clock::now();
+    #endif
         // std::cout << "\n------------ CUDA XYZ Filter (Custom) ----------------- " << std::endl;
 
     // ensure temp buffer is large enough

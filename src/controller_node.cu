@@ -145,10 +145,12 @@ void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publish
 
 void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_cloud)
 {
+    #ifdef ENABLE_VERBOSE
     // -----------------------------------------
     // Start timing
     // -----------------------------------------
-    std::chrono::steady_clock::time_point tstart = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point t_start = std::chrono::steady_clock::now();
+    #endif
 
     // ----------------------------------------------
     // initialize variables and clear cones marker
@@ -162,8 +164,10 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     
     size_t totalElements = inputSize * 4;      // input size times number of fields for each point
     
-    auto t1 = std::chrono::steady_clock::now();
-    
+    #ifdef ENABLE_VERBOSE
+        auto t1 = std::chrono::steady_clock::now();
+    #endif
+
     // ----------------------------------------------------------------------------------
     // removes the malloc logic inside .resize() by reserving enough memory beforehand
     // ----------------------------------------------------------------------------------
@@ -187,9 +191,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
 
     d_input = h_input;
 
+    #ifdef ENABLE_VERBOSE
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    #ifdef ENABLE_VERBOSE
         std::cout << "PointCloud2 conversion and copy to device: " << duration.count() << " ms" << std::endl;
     #endif
 
@@ -261,7 +265,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         
         #ifdef ENABLE_VERBOSE
             std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-            std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
+            std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - t_start);
             std::cout << "Total processing time for this callback: " << time_span.count() << " ms\n" << std::endl;
     
             if (time_span.count() > this->limitWarning_ms) {

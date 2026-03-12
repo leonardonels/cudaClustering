@@ -216,7 +216,9 @@ void CudaSegmentation::segment(
 {
       // std::cout << "\n----------- CUDA Segmentation (Custom) ---------------- "
       //           << std::endl;
-  auto t1 = std::chrono::steady_clock::now();
+  #ifdef ENABLE_VERBOSE
+      auto t1 = std::chrono::steady_clock::now();
+  #endif
 
   if (nCount < 10) {
       *out_num_points = nCount;
