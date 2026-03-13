@@ -397,6 +397,9 @@ CudaClustering::CudaClustering(clustering_parameters& param)
     cudaMalloc(&d_countsDevice, 4 * sizeof(int));
 
     #ifdef ENABLE_VERBOSE
+    // ---------------------------------------------------------------------------------------------------------------
+    // TODO: optmize block usage of each kernel based on occupancy results, instead of hardcoding 768 threads for all
+    // ---------------------------------------------------------------------------------------------------------------
         RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "---cluster kernels info---");
         int minGridSize = 0;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->boundingBoxKernel_block_size, boundingBoxKernel, 0, 0);
@@ -460,7 +463,7 @@ void CudaClustering::extractClusters(
         return;
     }
 
-    const int threads = 1024;
+    const int threads = 768;
     const int bbThreads = 256;  // bounded for shared memory in bbox kernel
     int blocks;
 
