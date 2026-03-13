@@ -431,6 +431,9 @@ CudaClustering::CudaClustering(clustering_parameters& param)
         #endif
 }
 
+// ------------------------------
+// TODO: check for memory leaks
+// ------------------------------
 CudaClustering::~CudaClustering()
 {
     if (d_counts) cudaFreeHost(d_counts);
