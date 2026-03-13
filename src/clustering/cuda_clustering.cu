@@ -463,7 +463,6 @@ void CudaClustering::extractClusters(
         return;
     }
 
-    const int threads = 768;
     const int bbThreads = 256;  // bounded for shared memory in bbox kernel
     int blocks;
 
@@ -507,8 +506,8 @@ void CudaClustering::extractClusters(
     // ------------------------------------------------------------------
     // 2. Compute voxel hash per point
     // ------------------------------------------------------------------
-    blocks = (inputSize + threads - 1) / threads;
-    computeVoxelKeysKernel<<<blocks, threads, 0, stream>>>(
+    blocks = (inputSize + computeVoxelKeysKernel_block_size - 1) / computeVoxelKeysKernel_block_size;
+    computeVoxelKeysKernel<<<blocks, computeVoxelKeysKernel_block_size, 0, stream>>>(
         input, thrust::raw_pointer_cast(d_voxelKeys.data()), inputSize,
         ecp.voxelX, ecp.voxelY, ecp.voxelZ,
         thrust::raw_pointer_cast(d_bbox.data()),
@@ -558,8 +557,8 @@ void CudaClustering::extractClusters(
     thrust::sequence(thrust::cuda::par(alloc).on(stream),
                      d_parent.begin(), d_parent.begin() + numFiltered);
 
-    blocks = (numFiltered + threads - 1) / threads;
-    unionFindKernel<<<blocks, threads, 0, stream>>>(
+    blocks = (numFiltered + unionFindKernel_block_size - 1) / unionFindKernel_block_size;
+    unionFindKernel<<<blocks, unionFindKernel_block_size, 0, stream>>>(
         thrust::raw_pointer_cast(d_filteredKeys.data()),
         numFiltered,
         thrust::raw_pointer_cast(d_parent.data()),
@@ -568,14 +567,14 @@ void CudaClustering::extractClusters(
     // ------------------------------------------------------------------
     // 7. Flatten parent array
     // ------------------------------------------------------------------
-    flattenParentKernel<<<blocks, threads, 0, stream>>>(
+    flattenParentKernel<<<blocks, flattenParentKernel_block_size, 0, stream>>>(
         thrust::raw_pointer_cast(d_parent.data()), numFiltered);
 
     // ------------------------------------------------------------------
     // 8. Assign cluster label per point
     // ------------------------------------------------------------------
-    blocks = (inputSize + threads - 1) / threads;
-    assignClusterLabelsKernel<<<blocks, threads, 0, stream>>>(
+    blocks = (inputSize + assignClusterLabelsKernel_block_size - 1) / assignClusterLabelsKernel_block_size;
+    assignClusterLabelsKernel<<<blocks, assignClusterLabelsKernel_block_size, 0, stream>>>(
         thrust::raw_pointer_cast(d_origKeys.data()),
         inputSize,
         thrust::raw_pointer_cast(d_filteredKeys.data()),
@@ -619,8 +618,8 @@ void CudaClustering::extractClusters(
     }
 
     // per-cluster bbox accumulation
-    blocks = (inputSize + threads - 1) / threads;
-    clusterBBoxKernel<<<blocks, threads, 0, stream>>>(
+    blocks = (inputSize + clusterBBoxKernel_block_size - 1) / clusterBBoxKernel_block_size;
+    clusterBBoxKernel<<<blocks, clusterBBoxKernel_block_size, 0, stream>>>(
         input,
         thrust::raw_pointer_cast(d_pointLabels.data()),
         thrust::raw_pointer_cast(d_labelMap.data()),
@@ -637,9 +636,9 @@ void CudaClustering::extractClusters(
     // zero the numCones counter (d_countsDevice[3])
     cudaMemsetAsync(&d_countsDevice[3], 0, sizeof(int), stream);
 
-    blocks = (numClusters + threads - 1) / threads;
+    blocks = (numClusters + dimensionFilterKernel_block_size - 1) / dimensionFilterKernel_block_size;
     if (blocks == 0) blocks = 1;
-    dimensionFilterKernel<<<blocks, threads, 0, stream>>>(
+    dimensionFilterKernel<<<blocks, dimensionFilterKernel_block_size, 0, stream>>>(
         thrust::raw_pointer_cast(d_clusterBBox.data()),
         thrust::raw_pointer_cast(d_clusterSizes.data()),
         numClusters,

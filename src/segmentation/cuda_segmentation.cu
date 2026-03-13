@@ -206,7 +206,6 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
       int minGridSize = 0;
       cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->compactInliersKernel_block_size, compactInliersKernel, 0, 0);
       RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of compactInliersKernel Max Potential Block Size: %d", this->compactInliersKernel_block_size);
-      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of compactInliersKernel Min Grid Size: %d", minGridSize);
   
       cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->ransacPlaneKernel_block_size, ransacPlaneKernel, 0, 0);
       RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of ransacPlaneKernel Max Potential Block Size: %d", this->ransacPlaneKernel_block_size);
