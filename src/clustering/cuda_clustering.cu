@@ -54,8 +54,14 @@ __global__ void boundingBoxKernel(
     unsigned int nPoints,
     float* __restrict__ d_bbox)
 {
-    __shared__ float s_min[3][256];  // blockDim.x capped to 256 for shared mem
-    __shared__ float s_max[3][256];
+    extern __shared__ float s_data[];
+    
+    float* s_minX = &s_data[0];
+    float* s_minY = &s_data[blockDim.x];
+    float* s_minZ = &s_data[2 * blockDim.x];
+    float* s_maxX = &s_data[3 * blockDim.x];
+    float* s_maxY = &s_data[4 * blockDim.x];
+    float* s_maxZ = &s_data[5 * blockDim.x];
 
     unsigned int tid = threadIdx.x;
     unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -73,31 +79,31 @@ __global__ void boundingBoxKernel(
         lminZ = fminf(lminZ, z); lmaxZ = fmaxf(lmaxZ, z);
     }
 
-    s_min[0][tid] = lminX; s_min[1][tid] = lminY; s_min[2][tid] = lminZ;
-    s_max[0][tid] = lmaxX; s_max[1][tid] = lmaxY; s_max[2][tid] = lmaxZ;
+    s_minX[tid] = lminX; s_minY[tid] = lminY; s_minZ[tid] = lminZ;
+    s_maxX[tid] = lmaxX; s_maxY[tid] = lmaxY; s_maxZ[tid] = lmaxZ;
     __syncthreads();
 
     // shared memory reduction
     for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
-            s_min[0][tid] = fminf(s_min[0][tid], s_min[0][tid + stride]);
-            s_min[1][tid] = fminf(s_min[1][tid], s_min[1][tid + stride]);
-            s_min[2][tid] = fminf(s_min[2][tid], s_min[2][tid + stride]);
-            s_max[0][tid] = fmaxf(s_max[0][tid], s_max[0][tid + stride]);
-            s_max[1][tid] = fmaxf(s_max[1][tid], s_max[1][tid + stride]);
-            s_max[2][tid] = fmaxf(s_max[2][tid], s_max[2][tid + stride]);
+            s_minX[tid] = fminf(s_minX[tid], s_minX[tid + stride]);
+            s_minY[tid] = fminf(s_minY[tid], s_minY[tid + stride]);
+            s_minZ[tid] = fminf(s_minZ[tid], s_minZ[tid + stride]);
+            s_maxX[tid] = fmaxf(s_maxX[tid], s_maxX[tid + stride]);
+            s_maxY[tid] = fmaxf(s_maxY[tid], s_maxY[tid + stride]);
+            s_maxZ[tid] = fmaxf(s_maxZ[tid], s_maxZ[tid + stride]);
         }
         __syncthreads();
     }
 
     // block winner atomically updates global bbox
     if (tid == 0) {
-        atomicMinFloat(&d_bbox[0], s_min[0][0]);
-        atomicMinFloat(&d_bbox[1], s_min[1][0]);
-        atomicMinFloat(&d_bbox[2], s_min[2][0]);
-        atomicMaxFloat(&d_bbox[3], s_max[0][0]);
-        atomicMaxFloat(&d_bbox[4], s_max[1][0]);
-        atomicMaxFloat(&d_bbox[5], s_max[2][0]);
+        atomicMinFloat(&d_bbox[0], s_minX[0]);
+        atomicMinFloat(&d_bbox[1], s_minY[0]);
+        atomicMinFloat(&d_bbox[2], s_minZ[0]);
+        atomicMaxFloat(&d_bbox[3], s_maxX[0]);
+        atomicMaxFloat(&d_bbox[4], s_maxY[0]);
+        atomicMaxFloat(&d_bbox[5], s_maxZ[0]);
     }
 }
 
@@ -463,7 +469,6 @@ void CudaClustering::extractClusters(
         return;
     }
 
-    const int bbThreads = 256;  // bounded for shared memory in bbox kernel
     int blocks;
 
     // ------------------------------------------------------------------
@@ -499,8 +504,11 @@ void CudaClustering::extractClusters(
     cudaMemcpyAsync(thrust::raw_pointer_cast(d_bbox.data()), bbox_init,
                     6 * sizeof(float), cudaMemcpyHostToDevice, stream);
 
-    blocks = std::min((int)((inputSize + bbThreads - 1) / bbThreads), 256);
-    boundingBoxKernel<<<blocks, bbThreads, 0, stream>>>(
+    int maxThreads = this->boundingBoxKernel_block_size > 0 ? this->boundingBoxKernel_block_size : 256;
+    size_t sharedMemBytes = 6 * maxThreads * sizeof(float);
+    blocks = (inputSize + maxThreads - 1) / maxThreads;
+
+    boundingBoxKernel<<<blocks, maxThreads, sharedMemBytes, stream>>>(
         input, inputSize, thrust::raw_pointer_cast(d_bbox.data()));
 
     // ------------------------------------------------------------------
