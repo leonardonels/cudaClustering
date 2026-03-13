@@ -3,16 +3,19 @@
 ControllerNode::ControllerNode() : Node("clustering_node")
 {
     this->loadParameters();
+    this->getInfo();
 
 
+    /* Select segmentation class */
     this->segmentation = new CudaSegmentation(segP);
+    
+    /* Select filtering class */
     this->cudaFilter = new CudaFilter(upFilterLimitX, downFilterLimitX, 
                                    upFilterLimitY, downFilterLimitY, 
                                    upFilterLimitZ, downFilterLimitZ);
 
+    /* Select clustering class */
     this->clustering = new CudaClustering(param);
-
-    this->clustering->getInfo();
 
     /* Define QoS for Best Effort messages transport */
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10), rmw_qos_profile_sensor_data);
@@ -44,7 +47,19 @@ ControllerNode::ControllerNode() : Node("clustering_node")
     cones->pose.orientation.z = 0.0;
     cones->pose.orientation.w = 1.0;
 
+    /* Cuda streams init*/
     cudaStreamCreate(&copy_stream);
+    cudaStreamCreate(&compute_stream);
+}
+
+ControllerNode::~ControllerNode()
+{
+    delete this->segmentation;
+    delete this->cudaFilter;
+    delete this->clustering;
+
+    if (copy_stream) cudaStreamDestroy(copy_stream);
+    if (compute_stream) cudaStreamDestroy(compute_stream);
 }
 
 void ControllerNode::loadParameters()
@@ -124,6 +139,27 @@ void ControllerNode::loadParameters()
     get_parameter("clustering", this->clusteringFlag);
     get_parameter("publishCluster", this->publishCluster);
     get_parameter("limitWarning_ms", this->limitWarning_ms);
+}
+
+void ControllerNode::getInfo()
+{
+    cudaDeviceProp prop;
+    int count = 0;
+    cudaGetDeviceCount(&count);
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "\nGPU has cuda devices: %d\n", count);
+    for (int i = 0; i < count; ++i) {
+        cudaGetDeviceProperties(&prop, i);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "----device id: %d info----", i);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  GPU : %s", prop.name);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Capability: %d.%d", prop.major, prop.minor);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Avaiable Streaming Multiprocessors: %d", prop.multiProcessorCount);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Global memory: %luMB", prop.totalGlobalMem >> 20);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Shared memory in a block: %luKB", prop.sharedMemPerBlock >> 10);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  warp size: %d", prop.warpSize);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  threads in a block: %d", prop.maxThreadsPerBlock);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  block dim: (%d,%d,%d)", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  grid dim: (%d,%d,%d)", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
+    }
 }
 
 void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub)
@@ -211,7 +247,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         // ----------------------------------------------
         // Call for cudaFilter
         // ----------------------------------------------
-        this->cudaFilter->filterPoints(raw_in, inputSize, &raw_out, &size);
+        this->cudaFilter->filterPoints(raw_in, inputSize, &raw_out, &size, compute_stream);
         inputSize = size;
 
         d_input.swap(d_output);
@@ -261,7 +297,7 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         // -----------------------------
         // call to extractClusters()
         // -----------------------------
-        this->clustering->extractClusters(raw_in, inputSize, raw_out, cones);
+        this->clustering->extractClusters(raw_in, inputSize, raw_out, cones, compute_stream);
         
         #ifdef ENABLE_VERBOSE
             std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();

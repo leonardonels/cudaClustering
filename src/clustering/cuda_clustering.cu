@@ -384,7 +384,6 @@ CudaClustering::CudaClustering(clustering_parameters& param)
     ecp.countThreshold  = param.clustering.countThreshold;
 
     filterParams = param.filtering;
-    cudaStreamCreate(&stream);
 
     // pre-allocate small fixed-size device buffers
     d_bbox.resize(6);       // [minX, minY, minZ, maxX, maxY, maxZ]
@@ -396,33 +395,37 @@ CudaClustering::CudaClustering(clustering_parameters& param)
 
     // device-side counters written by thrust/kernels
     cudaMalloc(&d_countsDevice, 4 * sizeof(int));
+
+    #ifdef ENABLE_VERBOSE
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "---cluster kernels info---");
+        int minGridSize = 0;
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->boundingBoxKernel_block_size, boundingBoxKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of boundingBoxKernel Max Potential Block Size: %d", this->boundingBoxKernel_block_size);
+        
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->computeVoxelKeysKernel_block_size, computeVoxelKeysKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of computeVoxelKeysKernel Max Potential Block Size: %d", this->computeVoxelKeysKernel_block_size);
+        
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->unionFindKernel_block_size, unionFindKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of unionFindKernel Max Potential Block Size: %d", this->unionFindKernel_block_size);
+        
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->flattenParentKernel_block_size, flattenParentKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of flattenParentKernel Max Potential Block Size: %d", this->flattenParentKernel_block_size);
+        
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->assignClusterLabelsKernel_block_size, assignClusterLabelsKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of assignClusterLabelsKernel Max Potential Block Size: %d", this->assignClusterLabelsKernel_block_size);
+        
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->clusterBBoxKernel_block_size, clusterBBoxKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of clusterBBoxKernel Max Potential Block Size: %d", this->clusterBBoxKernel_block_size);
+
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->dimensionFilterKernel_block_size, dimensionFilterKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of dimensionFilterKernel Max Potential Block Size: %d", this->dimensionFilterKernel_block_size);
+        #endif
 }
 
 CudaClustering::~CudaClustering()
 {
-    if (stream != NULL) cudaStreamDestroy(stream);
     if (d_counts) cudaFreeHost(d_counts);
     if (d_countsDevice) cudaFree(d_countsDevice);
-}
-
-void CudaClustering::getInfo()
-{
-    cudaDeviceProp prop;
-    int count = 0;
-    cudaGetDeviceCount(&count);
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "\nGPU has cuda devices: %d\n", count);
-    for (int i = 0; i < count; ++i) {
-        cudaGetDeviceProperties(&prop, i);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "----device id: %d info----", i);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  GPU : %s", prop.name);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Capability: %d.%d", prop.major, prop.minor);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  Global memory: %luMB", prop.totalGlobalMem >> 20);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  SM in a block: %luKB", prop.sharedMemPerBlock >> 10);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  warp size: %d", prop.warpSize);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  threads in a block: %d", prop.maxThreadsPerBlock);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  block dim: (%d,%d,%d)", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
-        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  grid dim: (%d,%d,%d)", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
-    }
 }
 
 // --------------------------------------------------------------------------
@@ -444,7 +447,8 @@ void CudaClustering::extractClusters(
     float* input,             // device pointer  (x,y,z,i)*N
     unsigned int inputSize,
     float* /*outputEC*/,      // device pointer  (unused in this pipeline)
-    std::shared_ptr<visualization_msgs::msg::Marker> cones)
+    std::shared_ptr<visualization_msgs::msg::Marker> cones,
+    cudaStream_t stream)
 {
     #ifdef ENABLE_VERBOSE
         auto t1 = std::chrono::steady_clock::now();

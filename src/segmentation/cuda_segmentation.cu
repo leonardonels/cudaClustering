@@ -200,6 +200,23 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
   segP.probability = params.probability;
 
   d_out_count.resize(1);
+
+  #ifdef ENABLE_VERBOSE
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "-segmentation kernel info-");
+      int minGridSize = 0;
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->compactInliersKernel_block_size, compactInliersKernel, 0, 0);
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of compactInliersKernel Max Potential Block Size: %d", this->compactInliersKernel_block_size);
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of compactInliersKernel Min Grid Size: %d", minGridSize);
+  
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->ransacPlaneKernel_block_size, ransacPlaneKernel, 0, 0);
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of ransacPlaneKernel Max Potential Block Size: %d", this->ransacPlaneKernel_block_size);
+  
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->markInliersKernel_block_size, markInliersKernel, 0, 0);
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of markInliersKernel Max Potential Block Size: %d", this->markInliersKernel_block_size);
+  
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->markInliersFromDeviceKernel_block_size, markInliersFromDeviceKernel, 0, 0);
+      RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of markInliersFromDeviceKernel Max Potential Block Size: %d", this->markInliersFromDeviceKernel_block_size);
+  #endif
 }
 
 // Funzione principale per segmentare i punti di input
@@ -245,7 +262,7 @@ void CudaSegmentation::segment(
 
   int max_iter = segP.maxIterations;
   if (max_iter <= 0) max_iter = 100;
-  if (max_iter > 1024) max_iter = 1024; // Limit for memory
+  if (max_iter > 1024) max_iter = 1024;     // limit for memory
 
   // temp buffers for RANSAC results
   if (int(d_counts.size()) < max_iter) d_counts.resize(max_iter);
@@ -258,10 +275,10 @@ void CudaSegmentation::segment(
   thrust::fill(thrust::cuda::par(alloc).on(stream), d_counts.begin(), d_counts.begin() + max_iter, -1);
 
   // launch RANSAC
-  // each block is 1 iteration, using 1024 threads for inlier counting + reduction
+  // each block is 1 iteration, using ransacPlaneKernel_block_size threads for inlier counting + reduction
   auto now = std::chrono::high_resolution_clock::now();
   unsigned int seed = (unsigned int)now.time_since_epoch().count();
-  ransacPlaneKernel<<<max_iter, 1024, 0, stream>>>(
+  ransacPlaneKernel<<<max_iter, this->ransacPlaneKernel_block_size, 0, stream>>>(
       raw_input, nCount, (float)segP.distanceThreshold, max_iter, raw_counts, raw_planes, seed
   );
 
@@ -283,7 +300,7 @@ void CudaSegmentation::segment(
 
   // mark inliers using the best plane (kernel reads plane from device memory)
   {
-      int threads = 1024;
+      int threads = this->markInliersFromDeviceKernel_block_size;
       int blocks = (nCount + threads - 1) / threads;
       // We need to pass float4 by value — launch a wrapper that loads from device ptr
       markInliersFromDeviceKernel<<<blocks, threads, 0, stream>>>(
@@ -297,7 +314,7 @@ void CudaSegmentation::segment(
   cudaMemsetAsync(raw_count, 0, sizeof(unsigned int), stream);
 
   {
-      int threads = 1024;
+      int threads = this->compactInliersKernel_block_size;
       int blocks = (nCount + threads - 1) / threads;
       compactInliersKernel<<<blocks, threads, 0, stream>>>(
           raw_input, raw_index, out_points, raw_count, nCount);

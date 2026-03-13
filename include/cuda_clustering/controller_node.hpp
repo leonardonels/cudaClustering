@@ -79,4 +79,7 @@ private:
 
 public:
         ControllerNode();
+        ~ControllerNode();
+
+        void getInfo();
 };

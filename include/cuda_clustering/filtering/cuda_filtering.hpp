@@ -18,6 +18,8 @@ class CudaFilter : public IFilter
         float upLimitZ, downLimitZ;
         bool filterX, filterY, filterZ;
 
+        int passthroughFilterKernel_block_size = 768; // default block size
+
         // thrust device vectors replace cudaMallocManaged temp buffers
         thrust::device_vector<float> d_temp;
         thrust::device_vector<unsigned int> d_count;
@@ -29,6 +31,6 @@ class CudaFilter : public IFilter
         CudaFilter(float upFilterLimitsX, float downFilterLimitsX,
                     float upFilterLimitsY, float downFilterLimitsY,
                     float upFilterLimitsZ, float downFilterLimitsZ);
-        ~CudaFilter();
-        void filterPoints(float* input, unsigned int inputSize, float** output, unsigned int* outputSize) override;
+        ~CudaFilter() = default;
+        void filterPoints(float* input, unsigned int inputSize, float** output, unsigned int* outputSize, cudaStream_t stream) override;
 };

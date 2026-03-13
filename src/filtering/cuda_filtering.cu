@@ -32,8 +32,8 @@ __global__ void passthroughFilterKernel(
 }
 
 CudaFilter::CudaFilter(float upX, float downX,
-                         float upY, float downY,
-                         float upZ, float downZ)
+                       float upY, float downY,
+                       float upZ, float downZ)
 {
     this->upLimitX   = upX;
     this->downLimitX = downX;
@@ -48,18 +48,18 @@ CudaFilter::CudaFilter(float upX, float downX,
     this->filterZ = (upZ != 1e10f && downZ != -1e10f);
 
     d_count.resize(1);
-    cudaStreamCreate(&stream);
-}
 
-CudaFilter::~CudaFilter()
-{
-    if (stream != NULL) {
-        cudaStreamDestroy(stream);
-    }
+    #ifdef ENABLE_VERBOSE
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "----filter kernel info----");
+        int minGridSize = 0;
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &this->passthroughFilterKernel_block_size, passthroughFilterKernel, 0, 0);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "  CUDA Occupancy of passthroughFilterKernel Max Potential Block Size: %d", this->passthroughFilterKernel_block_size);
+    #endif
 }
 
 void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
-                                float** output, unsigned int* outputSize)
+                              float** output, unsigned int* outputSize,
+                              cudaStream_t stream)
 {
     #ifdef ENABLE_VERBOSE
         auto t1 = std::chrono::steady_clock::now();
@@ -79,7 +79,7 @@ void CudaFilter::filterPoints(float* inputData, unsigned int inputSize,
 
     // launch the single-pass filter kernel
     float* raw_temp = thrust::raw_pointer_cast(d_temp.data());
-    int threads = 1024;
+    int threads = this->passthroughFilterKernel_block_size;
     int blocks  = (inputSize + threads - 1) / threads;
 
     passthroughFilterKernel<<<blocks, threads, 0, stream>>>(

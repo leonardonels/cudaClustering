@@ -76,11 +76,19 @@ class CudaClustering : public IClustering
     double totalTime = 0.0;
     unsigned int iterations = 0;
 
+    int boundingBoxKernel_block_size = 768; // default block size for bounding box kernel
+    int computeVoxelKeysKernel_block_size = 768; // default block size for computeVoxelKeys kernel
+    int unionFindKernel_block_size = 768; // default block size for unionFind kernel
+    int flattenParentKernel_block_size = 768; // default block size for flattenParent kernel
+    int assignClusterLabelsKernel_block_size = 768; // default block size for assignClusterLabels kernel
+    int clusterBBoxKernel_block_size = 768; // default block size for clusterBBox kernel
+    int dimensionFilterKernel_block_size = 768; // default block size for dimensionFilter kernel
+
   public:
     CudaClustering(clustering_parameters& param);
     ~CudaClustering();
-    void getInfo();
 
     void extractClusters(float* input, unsigned int inputSize, float* outputEC,
-                         std::shared_ptr<visualization_msgs::msg::Marker> cones);
+                         std::shared_ptr<visualization_msgs::msg::Marker> cones,
+                         cudaStream_t stream) override;
 };

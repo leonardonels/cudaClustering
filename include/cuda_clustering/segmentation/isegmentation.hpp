@@ -19,4 +19,5 @@ public:
                          float *out_points,
                          unsigned int* out_num_points,
                          cudaStream_t stream) = 0;
+    virtual ~Isegmentation() = default;
 };

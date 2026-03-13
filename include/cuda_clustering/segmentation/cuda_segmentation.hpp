@@ -52,7 +52,6 @@ class cudaSegmentation
 public:
     // Now Just support: SAC_RANSAC + SACMODEL_PLANE
     cudaSegmentation(int ModelType, int MethodType, cudaStream_t stream = 0);
-    ~cudaSegmentation(void);
 
     /*
     Input:
@@ -78,6 +77,11 @@ private:
     double totalTime = 0.0;
     unsigned int iterations = 0;
 
+    int compactInliersKernel_block_size = 768; // default block size for compactInliers kernel
+    int ransacPlaneKernel_block_size = 768; // default block size for ransacPlane kernel
+    int markInliersKernel_block_size = 768; // default block size for markInliers kernel
+    int markInliersFromDeviceKernel_block_size = 768; // default block size for markInliersFromDevice kernel
+
     // -------------------------------------------------------------------------
     // Device vectors for GPU data
     // -------------------------------------------------------------------------
@@ -96,6 +100,7 @@ private:
 
 public:
     CudaSegmentation(segParam_t& params);
+    ~CudaSegmentation() = default;
     
     void segment(float *inputData,
                  unsigned int nCount,
