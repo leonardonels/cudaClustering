@@ -431,9 +431,6 @@ CudaClustering::CudaClustering(clustering_parameters& param)
         #endif
 }
 
-// ------------------------------
-// TODO: check for memory leaks
-// ------------------------------
 CudaClustering::~CudaClustering()
 {
     if (d_counts) cudaFreeHost(d_counts);
@@ -645,7 +642,7 @@ void CudaClustering::extractClusters(
     // ------------------------------------------------------------------
     d_conePoints.resize(numClusters * 3);
     // zero the numCones counter (d_countsDevice[3])
-    cudaMemsetAsync(&d_countsDevice[3], 0, sizeof(int), stream);
+    // cudaMemsetAsync(&d_countsDevice[3], 0, sizeof(int), stream);    // already done previously
 
     blocks = (numClusters + dimensionFilterKernel_block_size - 1) / dimensionFilterKernel_block_size;
     if (blocks == 0) blocks = 1;
