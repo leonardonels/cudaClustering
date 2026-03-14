@@ -22,7 +22,7 @@
     clusterMinX: -0.1
     clusterMinY: -0.1
     clusterMinZ: 0.1
-    maxHeight: 0.4          #of the lowest point
+    maxHeight: 0.4          # of the lowest point
 
     #filter
     downFilterLimitX: -25.0
@@ -34,7 +34,7 @@
 
     #segmentation
     distanceThreshold: 0.1
-    maxIterations: 80     # optimal range: 50-80 -> 80 iterations on the orin means more or less 8 parallel iterations times 10 sequential iterations
+    maxIterations: 80    # by requiring the plane to be found form 3 points close to the car the max number of iterations can be reduce to 1/3
     probability: 0.75
 
     #options
