@@ -31,7 +31,9 @@ using pinned_host_vector = thrust::host_vector<T>;
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-
+#ifdef LOGGER_PUB
+#include <std_msgs/msg/float64.hpp>
+#endif
 #include <pcl_conversions/pcl_conversions.h>
 
 class ControllerNode : public rclcpp::Node
@@ -76,6 +78,13 @@ private:
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr cones_array_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr filtered_cp_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr segmented_cp_pub;
+        
+        /* Logger publisher */
+        #ifdef LOGGER_PUB
+        float processing_time_ms = 0.0;
+        uint64_t count = 0;
+        rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr logger_pub;
+        #endif
 
         /* Load parameters function */
         void loadParameters();

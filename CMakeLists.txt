@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
-option(ENABLE_VERBOSE "Print essential timings information for each callback" ON)
+option(ENABLE_VERBOSE "Print essential timings information for each callback" OFF)
+option(LOGGER_PUB "Publish timing information to a ROS topic" ON)
 option(USE_CUDA_POINTCLOUD_CONVERTER "Build pointcloud_converter from CUDA implementation" ON)
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
@@ -30,6 +31,13 @@ if(ENABLE_VERBOSE)
   add_definitions(-DENABLE_VERBOSE)
 else()
   message(STATUS "Verbose timing information: DISABLED")
+endif()
+
+if(LOGGER_PUB)
+  message(STATUS "ROS logger publisher: ENABLED")
+  add_definitions(-DLOGGER_PUB)
+else()
+  message(STATUS "ROS logger publisher: DISABLED")
 endif()
 
 if(USE_CUDA_POINTCLOUD_CONVERTER)

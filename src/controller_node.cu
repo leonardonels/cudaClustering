@@ -25,6 +25,9 @@ ControllerNode::ControllerNode() : Node("clustering_node")
         this->filtered_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->filtered_topic, 100);
     if(this->segmentFlag && this->publishSegmentedPc)
         this->segmented_cp_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(this->segmented_topic, 100);
+    #ifdef LOGGER_PUB
+        this->logger_pub = this->create_publisher<std_msgs::msg::Float64>("/logger/clustering/time", 100);
+    #endif
 
     /* Create subscriber */
     this->cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(this->input_topic, qos,
@@ -183,10 +186,10 @@ void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publish
 
 void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_cloud)
 {
-    #ifdef ENABLE_VERBOSE
     // -----------------------------------------
     // Start timing
     // -----------------------------------------
+    #if defined(ENABLE_VERBOSE) || defined(LOGGER_PUB)
         std::chrono::steady_clock::time_point t_start = std::chrono::steady_clock::now();
     #endif
 
@@ -304,9 +307,11 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         // -----------------------------
         this->clustering->extractClusters(raw_in, inputSize, raw_out, cones, compute_stream);
         
-        #ifdef ENABLE_VERBOSE
+        #if defined(ENABLE_VERBOSE) || defined(LOGGER_PUB)
             std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
             std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - t_start);
+        #endif
+        #ifdef ENABLE_VERBOSE
             std::cout << "Total processing time for this callback: " << time_span.count() << " ms\n" << std::endl;
     
             if (time_span.count() > this->limitWarning_ms) {
@@ -321,5 +326,17 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
             cones->header.stamp = this->now();
             cones_array_pub->publish(*cones);
         }
+
+        #ifdef LOGGER_PUB
+            // Publish timing information to a ROS topic
+            processing_time_ms += time_span.count();
+            count++;
+            if(count % 100 == 0)
+            {
+                std_msgs::msg::Float64 time_msg;
+                time_msg.data = processing_time_ms / count;  // average processing time
+                logger_pub->publish(time_msg);
+            }
+        #endif
     }
 }
