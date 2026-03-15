@@ -7,7 +7,12 @@
 #include "cuda_clustering/filtering/ifiltering.hpp"
 #include "cuda_clustering/segmentation/cuda_segmentation.hpp"
 #include "cuda_clustering/segmentation/isegmentation.hpp"
+
+#ifdef USE_CUDA_POINTCLOUD_CONVERTER
+#include "cuda_clustering/utils/cuda_pointcloud_converter.hpp"
+#else
 #include "cuda_clustering/utils/pointcloud_converter.hpp"
+#endif
 
 #include <cuda_runtime.h>
 #include <thrust/memory.h>
@@ -56,6 +61,10 @@ private:
         cudaStream_t compute_stream = NULL;
         cudaStream_t copy_stream = NULL;
 
+        #ifdef USE_CUDA_POINTCLOUD_CONVERTER
+        // resources for cuda pointcloud converter
+        pointcloud_utils::ConverterResources converter_res_;
+        #endif
 
         IFilter *cudaFilter;
         IClustering *clustering;

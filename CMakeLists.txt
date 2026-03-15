@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(clustering LANGUAGES CXX C CUDA)
 
 option(ENABLE_VERBOSE "Print essential timings information for each callback" ON)
+option(USE_CUDA_POINTCLOUD_CONVERTER "Build pointcloud_converter from CUDA implementation" ON)
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-diag-suppress=20012,20015>")
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
@@ -29,6 +30,15 @@ if(ENABLE_VERBOSE)
   add_definitions(-DENABLE_VERBOSE)
 else()
   message(STATUS "Verbose timing information: DISABLED")
+endif()
+
+if(USE_CUDA_POINTCLOUD_CONVERTER)
+  message(STATUS "PointCloud converter backend: CUDA")
+  set(POINTCLOUD_CONVERTER_SOURCE src/utils/cuda_pointcloud_converter.cu)
+  add_definitions(-DUSE_CUDA_POINTCLOUD_CONVERTER)
+else()
+  message(STATUS "PointCloud converter backend: CPU")
+  set(POINTCLOUD_CONVERTER_SOURCE src/utils/pointcloud_converter.cpp)
 endif()
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")
@@ -83,9 +93,12 @@ add_library(cluster_filtering src/clustering/cluster_filtering/dimension_filter.
 add_library(cuda_filtering src/filtering/cuda_filtering.cu)
 add_library(cuda_segmentation src/segmentation/cuda_segmentation.cu)
 
-# Optimized pointcloud converter library with -O3
-add_library(pointcloud_converter src/utils/pointcloud_converter.cpp)
-target_compile_options(pointcloud_converter PRIVATE -O3 -march=native -mtune=native -ffast-math)
+# Optimized pointcloud converter library
+add_library(pointcloud_converter ${POINTCLOUD_CONVERTER_SOURCE})
+target_compile_options(pointcloud_converter PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-O3 -march=native -mtune=native -ffast-math>
+  $<$<COMPILE_LANGUAGE:CUDA>:-O3 --use_fast_math>
+)
 target_include_directories(pointcloud_converter PUBLIC include)
 ament_target_dependencies(pointcloud_converter
   sensor_msgs

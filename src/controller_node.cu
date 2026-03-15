@@ -225,9 +225,12 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     // -------------------------------------------------------
     // convert PointCloud2 to float array and copy to device
     // -------------------------------------------------------
-    pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, h_input.data());
-
-    d_input = h_input;
+    #ifdef USE_CUDA_POINTCLOUD_CONVERTER
+        pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, d_input, converter_res_);   // converto to device directly with cuda kernel
+    #else
+        pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, h_input.data());
+        d_input = h_input;
+    #endif
 
     #ifdef ENABLE_VERBOSE
     auto t2 = std::chrono::steady_clock::now();
