@@ -58,6 +58,7 @@ __global__ void ransacPlaneKernel(
     int num_points,
     float threshold,
     int max_iterations,
+    float max_segmentation_distance,
     int* __restrict__ plane_inliers_counts,
     float4* __restrict__ plane_models,
     unsigned int seed
@@ -81,7 +82,7 @@ __global__ void ransacPlaneKernel(
     float p3[3] = {points[idx3*4], points[idx3*4+1], points[idx3*4+2]};
 
     // look for planes only near the sensor (optional heuristic to improve speed and robustness)
-    if (p1[0]*p1[0] + p1[1]*p1[1] + p1[2]*p1[2] > 400.0f) {   // only consider points within 20m
+    if (p1[0]*p1[0] + p1[1]*p1[1] + p1[2]*p1[2] > (float)max_segmentation_distance) {   // only consider points within maxSegmenationDistance from the sensor
         if (threadIdx.x == 0) {
             plane_inliers_counts[iter] = -1; // mark as invalid
         }
@@ -198,6 +199,7 @@ CudaSegmentation::CudaSegmentation(segParam_t &params)
   segP.distanceThreshold = params.distanceThreshold;
   segP.maxIterations = params.maxIterations;
   segP.probability = params.probability;
+  segP.maxSegmenationDistance = params.maxSegmenationDistance * params.maxSegmenationDistance; // store squared distance to avoid sqrt in segmentation
 
   d_out_count.resize(1);
 
@@ -278,7 +280,7 @@ void CudaSegmentation::segment(
   auto now = std::chrono::high_resolution_clock::now();
   unsigned int seed = (unsigned int)now.time_since_epoch().count();
   ransacPlaneKernel<<<max_iter, this->ransacPlaneKernel_block_size, 0, stream>>>(
-      raw_input, nCount, (float)segP.distanceThreshold, max_iter, raw_counts, raw_planes, seed
+      raw_input, nCount, (float)segP.distanceThreshold, max_iter, (float)segP.maxSegmenationDistance, raw_counts, raw_planes, seed
   );
 
   // find best RANSAC iteration entirely on GPU using thrust::max_element

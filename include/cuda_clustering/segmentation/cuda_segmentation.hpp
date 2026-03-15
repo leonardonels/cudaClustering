@@ -44,6 +44,7 @@ typedef struct
     double distanceThreshold;
     int maxIterations;
     double probability;
+    double maxSegmenationDistance; // new parameter to limit how far points can be from the sensor for plane fitting
     bool optimizeCoefficients;
 } segParam_t;
 

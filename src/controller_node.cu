@@ -96,6 +96,7 @@ void ControllerNode::loadParameters()
     declare_parameter("publishFilteredPc", false);
     declare_parameter("publishSegmentedPc", false);
     declare_parameter("distanceThreshold", 0.1);
+    declare_parameter("maxSegmenationDistance", 20.0);
     declare_parameter("maxIterations", 166);
     declare_parameter("probability", 0.75);
     declare_parameter("clustering", true);
@@ -134,6 +135,7 @@ void ControllerNode::loadParameters()
     get_parameter("publishFilteredPc", this->publishFilteredPc);
     get_parameter("publishSegmentedPc", this->publishSegmentedPc);
     get_parameter("distanceThreshold", this->segP.distanceThreshold);
+    get_parameter("maxSegmenationDistance", this->segP.maxSegmenationDistance);
     get_parameter("maxIterations", this->segP.maxIterations);
     get_parameter("probability", this->segP.probability);
     get_parameter("clustering", this->clusteringFlag);
