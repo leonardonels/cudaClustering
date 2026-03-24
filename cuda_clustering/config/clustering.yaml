@@ -30,12 +30,10 @@
     maxIterations: 500
     probability: 0.95
     optimizeCoefficients: false
+    patches: false
 
     #options
     filterOnZ: false
-    segment: true
-    publishFilteredPc: true
-    publishSegmentedPc: true 
-    
+
     
 

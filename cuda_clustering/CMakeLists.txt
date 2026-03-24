@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.8)
-project(clustering)
+project(clustering LANGUAGES CXX CUDA)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
+
+add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")
 # find dependencies
@@ -65,6 +67,11 @@ set_target_properties( libcudafilter PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE
 add_library(libcudasegmentation SHARED IMPORTED)
 set_target_properties( libcudasegmentation PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libcudasegmentation.so )
 
+add_library(gpu_kernels_fixed src/segmentation/gpu_kernels_fixed.cu)
+target_link_libraries(${PROJECT_NAME}
+  gpu_kernels_fixed
+)
+
 link_directories(libcudacluster)
 link_directories(libcudafilter)
 link_directories(libcudasegmentation)
@@ -116,6 +123,7 @@ target_link_libraries(${PROJECT_NAME}
   cuda_filtering
   cuda_segmentation
   pointcloud_converter
+  gpu_kernels_fixed
 )
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp

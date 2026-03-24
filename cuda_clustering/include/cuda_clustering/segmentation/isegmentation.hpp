@@ -1,13 +1,22 @@
 #pragma once
 
-#include <rclcpp/rclcpp.hpp>
 #include <cuda_runtime.h>
 #include <cstddef>
 #include <vector>
 
+typedef struct
+{
+    double distanceThreshold;
+    int maxIterations;
+    double probability;
+    bool optimizeCoefficients;
+} segParam_t;
+
 class Isegmentation
 {
 public:
+    cudaStream_t stream = NULL;
+    segParam_t segP;
     /**
      * → input point buffer (as floats xyzxyz...)
      * num_points: number of points

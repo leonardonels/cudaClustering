@@ -35,14 +35,6 @@ typedef enum
     SAC_PROSAC = 6,
 } SacMethod;
 
-typedef struct
-{
-    double distanceThreshold;
-    int maxIterations;
-    double probability;
-    bool optimizeCoefficients;
-} segParam_t;
-
 class cudaSegmentation
 {
 public:
@@ -68,15 +60,11 @@ private:
 
 class CudaSegmentation : public Isegmentation
 {
-
-private:
 public:
     // unsigned int memory_allocated = 0;
     float *input = nullptr;
     int *index = nullptr;
     float *modelCoefficients = nullptr;
-    cudaStream_t stream = NULL;
-    segParam_t segP;
     bool skip = false;
     int mall_size = 0;
     CudaSegmentation(segParam_t& params);

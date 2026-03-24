@@ -1,4 +1,5 @@
 #include "cuda_clustering/segmentation/cuda_segmentation.hpp"
+#include <rclcpp/rclcpp.hpp>
 
 CudaSegmentation::CudaSegmentation(segParam_t &params)
 {
