@@ -69,22 +69,26 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
   std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t2 - t1);
   RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA Memory Time: %f ms.", time_span.count());
 
-  cudaec.extract(input, inputSize, outputEC, indexEC);
-  cudaStreamSynchronize(stream);
-
-  for (size_t i = 1; i <= indexEC[0]; i++)
-  {
-    unsigned int outoff = 0;
-    for (size_t w = 1; w < i; w++)
+  if(inputSize == 0){
+    RCLCPP_WARN(rclcpp::get_logger("clustering_node"), "No points to cluster.");
+  }else{
+    cudaec.extract(input, inputSize, outputEC, indexEC);
+    cudaStreamSynchronize(stream);
+    
+    for (size_t i = 1; i <= indexEC[0]; i++)
     {
-      if (i>1) {
-        outoff += indexEC[w];
+      unsigned int outoff = 0;
+      for (size_t w = 1; w < i; w++)
+      {
+        if (i>1) {
+          outoff += indexEC[w];
+        }
       }
-    }
-    std::optional<geometry_msgs::msg::Point> pnt_opt = filter->analiseCluster(&outputEC[outoff*4], indexEC[i]);
-    //RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Possible cluster of %d points: detected as %d.", indexEC[i], pnt_opt.has_value());
-    if(pnt_opt.has_value()){
-      cones->points.push_back(pnt_opt.value());
+      std::optional<geometry_msgs::msg::Point> pnt_opt = filter->analiseCluster(&outputEC[outoff*4], indexEC[i]);
+      //RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Possible cluster of %d points: detected as %d.", indexEC[i], pnt_opt.has_value());
+      if(pnt_opt.has_value()){
+        cones->points.push_back(pnt_opt.value());
+      }
     }
   }
   std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
