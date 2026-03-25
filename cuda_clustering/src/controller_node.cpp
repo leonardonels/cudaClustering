@@ -200,12 +200,11 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     }
 
     this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
-    // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+    
     std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
     RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
     std::cout << "\n------------------------------------ "<< std::endl;
-
 
     cones->header.stamp = this->now();
     if(cones->points.size() != 0)

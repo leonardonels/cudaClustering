@@ -74,7 +74,8 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
   }else{
     cudaec.extract(input, inputSize, outputEC, indexEC);
     cudaStreamSynchronize(stream);
-    
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "Found %d clusters.", indexEC[0]);
+
     for (size_t i = 1; i <= indexEC[0]; i++)
     {
       unsigned int outoff = 0;
