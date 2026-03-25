@@ -5,6 +5,15 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+option(ENABLE_VERBOSE "Enable print essential timings for segmentation and clustering" OFF)
+
+if(ENABLE_VERBOSE)
+  message(STATUS "Verbose timing information: ENABLED")
+  add_definitions(-DENABLE_VERBOSE)
+else()
+  message(STATUS "Verbose timing information: DISABLED")
+endif()
+
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>")
 
 #set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-12.8")

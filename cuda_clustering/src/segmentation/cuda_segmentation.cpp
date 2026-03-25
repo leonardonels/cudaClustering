@@ -42,11 +42,12 @@ void CudaSegmentation::segment(
     float **out_points,
     unsigned int *out_num_points)
 {
-  std::cout << "\n----------- CUDA Segmentation ---------------- "<< std::endl;
-  // Inizio misurazione del tempo
-  auto t1 = std::chrono::steady_clock::now();
-
-  RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Avvio segmentazione di %d punti", nCount);
+  #ifdef ENABLE_VERBOSE 
+    std::cout << "\n----------- CUDA Segmentation ---------------- "<< std::endl;
+    // Inizio misurazione del tempo
+    auto t1 = std::chrono::steady_clock::now();
+    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Avvio segmentazione di %d punti", nCount);
+  #endif
 
   if(nCount > mall_size){
     realloc(nCount);
@@ -86,12 +87,12 @@ void CudaSegmentation::segment(
       }
     }
     *out_num_points = idx;
-
+    #ifdef ENABLE_VERBOSE
     // Fine misurazione del tempo
     auto t2 = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
     RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Segmentazione completata in %.3f ms", duration.count());
-
+    #endif
     // Log dei coefficienti del modello
     // RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "Coefficienti modello: [%.4f, %.4f, %.4f, %.4f]",
     //             modelCoefficients[0], modelCoefficients[1], modelCoefficients[2], modelCoefficients[3]);

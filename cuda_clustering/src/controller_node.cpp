@@ -162,11 +162,12 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);
     
     /* ----------------------------------------- */
-
-    auto t2 = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
-    RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
-
+    #ifdef ENABLE_VERBOSE
+        auto t2 = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+        RCLCPP_INFO(rclcpp::get_logger("CudaSegmentation"), "conversione in: %.3f ms", duration.count());
+    #endif
+    
     if (this->filterOnZ)
     {
         this->filter->filterPoints(inputData, inputSize, &partialOutput, &size);
@@ -200,11 +201,13 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
     }
 
     this->clustering->extractClusters(inputData, inputSize, partialOutput, cones);
-    
-    std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
-    std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
-    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
-    std::cout << "\n------------------------------------ "<< std::endl;
+    // RCLCPP_INFO(this->get_logger(), "Marker: %ld data points.", cones->points.size());
+    #ifdef ENABLE_VERBOSE
+        std::chrono::steady_clock::time_point tend = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(tend - tstart);
+        RCLCPP_INFO(rclcpp::get_logger("clustering_node"), ">>>> TOTAL TIME: %f ms.", time_span.count());
+        std::cout << "\n------------------------------------ "<< std::endl;
+    #endif
 
     cones->header.stamp = this->now();
     if(cones->points.size() != 0)

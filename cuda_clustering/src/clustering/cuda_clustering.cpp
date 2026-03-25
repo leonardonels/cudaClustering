@@ -37,7 +37,9 @@ void CudaClustering::getInfo(void)
 }
 
 void CudaClustering::reallocateMemory(unsigned int sizeEC){
+  #ifdef ENABLE_VERBOSE
   RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "REALLOC");
+  #endif
   cudaFree(indexEC);
   cudaStreamSynchronize(stream);
   cudaMallocManaged(&indexEC, sizeof(unsigned int) * 4 * (sizeEC), cudaMemAttachHost);
@@ -48,9 +50,10 @@ void CudaClustering::reallocateMemory(unsigned int sizeEC){
 
 void CudaClustering::extractClusters(float* input, unsigned int inputSize, float* outputEC, std::shared_ptr<visualization_msgs::msg::Marker> cones)
 {
-  std::cout << "\n------------ CUDA Clustering ---------------- "<< std::endl;
-  std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-
+  #ifdef ENABLE_VERBOSE
+    std::cout << "\n------------ CUDA Clustering ---------------- "<< std::endl;
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #endif
   if(memoryAllocated < inputSize){
     reallocateMemory(inputSize);
     memoryAllocated = inputSize;
@@ -64,10 +67,12 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
   cudaExtractCluster cudaec(stream);
   cudaec.set(this->ecp);
   cudaStreamSynchronize(stream);
-
-  std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-  std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t2 - t1);
-  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA Memory Time: %f ms.", time_span.count());
+  
+  #ifdef ENABLE_VERBOSE
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+    std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t2 - t1);
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA Memory Time: %f ms.", time_span.count());
+  #endif
 
   if(inputSize == 0){
     RCLCPP_WARN(rclcpp::get_logger("clustering_node"), "No points to cluster.");
@@ -92,11 +97,13 @@ void CudaClustering::extractClusters(float* input, unsigned int inputSize, float
       }
     }
   }
-  std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
-  time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t3 - t2);
-  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA extract by Time: %f ms.", time_span.count());
-  time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t3 - t1);
-  RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA Total Time: %f ms.", time_span.count());
+  #ifdef ENABLE_VERBOSE 
+    std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
+    time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t3 - t2);
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA extract by Time: %f ms.", time_span.count());
+    time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t3 - t1);
+    RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA Total Time: %f ms.", time_span.count());
+  #endif
   /*end*/
 
   // cudaFree(input);
