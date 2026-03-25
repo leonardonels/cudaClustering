@@ -139,7 +139,10 @@ void ControllerNode::publishPc(float *points, unsigned int size, rclcpp::Publish
 
 void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_cloud)
 {
+    #ifdef ENABLE_VERBOSE
     std::chrono::steady_clock::time_point tstart = std::chrono::steady_clock::now();
+    #endif
+
     cones->points = {};
     unsigned int size = 0;
     float* tmp = NULL;
@@ -156,7 +159,9 @@ void ControllerNode::scanCallback(sensor_msgs::msg::PointCloud2::SharedPtr sub_c
         memoryAllocated = inputSize;
     }
 
+    #ifdef ENABLE_VERBOSE
     auto t1 = std::chrono::steady_clock::now();
+    #endif
     /* ----------------------------------------- */
     
     pointcloud_utils::convertPointCloud2ToFloatArray(sub_cloud, inputData);

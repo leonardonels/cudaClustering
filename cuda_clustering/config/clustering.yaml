@@ -36,7 +36,7 @@
     maxIterations: 500
     probability: 0.95
     optimizeCoefficients: false
-    patches: true
+    patches: false  # more testing required
 
     #options
     filterOnZ: false

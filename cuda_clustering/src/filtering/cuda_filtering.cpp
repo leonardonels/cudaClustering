@@ -15,19 +15,26 @@ CudaFilter::CudaFilter(float upFilterLimits, float downFilterLimits)
 
 void CudaFilter::filterPoints(float* inputData, unsigned int inputSize, float** output, unsigned int* outputSize)
 {
+  #ifdef ENABLE_VERBOSE
   std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #endif
   cudaFilter filterTest(stream);
+
+  #ifdef ENABLE_VERBOSE
   std::cout << "\n------------ CUDA PassThrough ---------------- "<< std::endl;
+  #endif
 
   filterTest.set(this->setP);
   cudaStreamSynchronize(stream);
   cudaDeviceSynchronize();
   
   filterTest.filter(*output, outputSize, inputData, inputSize);
+  #ifdef ENABLE_VERBOSE
   std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::ratio<1, 1000>> time_span = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1, 1000>>>(t2 - t1);
   
   RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA PassThrough Time: %f ms.", time_span.count());
   RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA PassThrough before filtering: %d", inputSize);
   RCLCPP_INFO(rclcpp::get_logger("clustering_node"), "CUDA PassThrough after filtering: %d", *outputSize);
+  #endif
 }
